@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# 打包产物 —— 用 `zip -r xtags-<version>.zip extension/` 重新生成即可
+*.zip
+
+# 私钥：chrome://extensions → 打包扩展程序 会生成，弄丢了就没法给同一个扩展发更新
+*.pem
+
+# 编辑器
+.vscode/
+.idea/

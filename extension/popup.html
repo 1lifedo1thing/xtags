@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --ink: #16191c;
+    --ink-2: #5a6670;
+    --ink-3: #8b959c;
+    --rule: #e2e6e8;
+    --accent: #0f5f63;
+    --alert: #b91c1c;
+    --field: #f6f8f8;
+  }
+  * { box-sizing: border-box; }
+  /* [hidden] 的 display:none 来自浏览器默认样式，优先级极低——下面任何一条
+     显式写了 display 的规则都会把它覆盖掉，元素照样显示。必须 !important。 */
+  [hidden] { display: none !important; }
+  body {
+    width: 320px;
+    margin: 0;
+    padding: 12px 16px 12px;
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: #fff;
+  }
+  h1 {
+    margin: 0 0 2px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+  }
+  .sub { color: var(--ink-3); font-size: 11px; margin-bottom: 11px; }
+
+  label.field { display: block; margin-bottom: 8px; }
+  .lab {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    color: var(--ink-2);
+    margin-bottom: 4px;
+  }
+  input[type="text"], input[type="password"], input[type="number"] {
+    width: 100%;
+    padding: 6px 9px;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--field);
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--ink);
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .hint { font-size: 10.5px; color: var(--ink-3); margin-top: 3px; }
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .row span { font-size: 12.5px; }
+  .row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); }
+
+  .btn {
+    margin-top: 9px;
+    width: 100%;
+    padding: 7px;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--field);
+    font: 500 12px/1 inherit;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .btn:hover { border-color: var(--ink-3); color: var(--ink); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .about {
+    margin-top: 8px;
+    padding-top: 7px;
+    border-top: 1px solid var(--rule);
+  }
+  .about-toggle {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font: 500 10.5px/1.5 inherit;
+    color: var(--ink-3);
+    cursor: pointer;
+    text-align: left;
+  }
+  .about-toggle:hover { color: var(--ink-2); }
+  .about-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .about-toggle .chev { margin-left: auto; transition: transform .12s ease; }
+  .about-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
+
+  .about-body {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .about-body b { color: var(--ink-2); font-weight: 600; }
+  .about-body a { color: var(--accent); text-decoration: none; }
+  .about-body a:hover { text-decoration: underline; }
+  .about-body .sep { color: var(--rule); }
+  .about-body .note {
+    margin-top: 3px;
+    font-size: 10.5px;
+    line-height: 1.45;
+    color: var(--ink-3);
+  }
+
+  @media (prefers-reduced-motion: reduce) { .about-toggle .chev { transition: none; } }
+</style>
+</head>
+<body>
+  <h1>Xtags</h1>
+  <p class="sub">每条帖子标出它想让你干什么</p>
+
+  <label class="field">
+    <span class="lab">API KEY</span>
+    <input id="apiKey" type="password" placeholder="ts_..." autocomplete="off" spellcheck="false">
+    <span class="hint">存在本地，只用于调用 TypeSafe</span>
+  </label>
+
+  <label class="field">
+    <span class="lab">触发阈值</span>
+    <input id="threshold" type="number" min="0" max="1" step="0.05">
+    <span class="hint">三个信号超过它才标出来；意图标签不受影响</span>
+  </label>
+
+  <div class="row"><span>启用</span><input id="enabled" type="checkbox"></div>
+  <div class="row"><span>跳过回复</span><input id="skipReplies" type="checkbox"></div>
+  <div class="row"><span>显示三个信号的数值</span><input id="showAll" type="checkbox"></div>
+  <div class="row"><span>显示右上角面板</span><input id="showHud" type="checkbox"></div>
+
+  <button class="btn" id="reset">清空缓存</button>
+
+  <div class="about">
+    <button class="about-toggle" id="aboutToggle" aria-expanded="false" aria-controls="aboutBody">
+      <span>关于 Xtags</span>
+      <span class="chev" aria-hidden="true">▾</span>
+    </button>
+    <div class="about-body" id="aboutBody" hidden>
+      <div><b id="appname">Xtags</b> <span id="ver">v—</span> · MIT · by <b id="author">—</b></div>
+      <div>
+        <a id="homepage" href="#" target="_blank" rel="noopener" hidden>linyishan.com</a>
+        <span class="sep">·</span>
+        <a href="mailto:linyishan@gmail.com">linyishan@gmail.com</a>
+      </div>
+      <div class="note">仅供个人本地浏览辅助使用。分类结果由 AI 生成，可能有误，不代表作者立场。与 X Corp 无关联。</div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
