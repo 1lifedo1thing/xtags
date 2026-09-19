@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Xtags 隐私政策</title><meta name="description" content="Xtags 如何处理帖子正文、作者账号、API 凭证及本地判断缓存。"><link rel="stylesheet" href="styles.css"></head><body>
+<header><a class="brand" href="index.html"><img src="assets/icon-128.png" alt="">Xtags</a><nav><a href="privacy.html" lang="en">English</a><a href="support.html">支持</a></nav></header>
+<main>
+<h1>隐私政策</h1><p class="meta">更新日期：2026 年 9 月 20 日 · 适用于 Xtags 0.1.3</p>
+<p>Xtags 由 yishan 开发，联系邮箱：<a href="mailto:linyishan@gmail.com">linyishan@gmail.com</a>。扩展的单一用途是在你浏览的 X 帖子旁显示 AI 估计的意图及相关信号。</p>
+<p class="notice"><strong>分类并非完全在本地完成。</strong> 明确同意数据传输、启用 Xtags 并配置 TypeSafe API key 后，扩展会把提取的帖子正文和作者账号发送给 TypeSafe AI 做判断。TypeSafe 可能向你的账户收取 API 费用。</p>
+<h2>1. 扩展处理的数据</h2>
+<ul>
+<li><strong>帖子内容与作者账号：</strong>从 <code>x.com</code> 和 <code>twitter.com</code> 已渲染的帖子容器提取正文。这可能包括正文中的链接或个人信息。已渲染的帖子可能位于当前视口外，也可能仅对你登录的账号可见；Xtags 不会验证每条帖子是否公开。</li>
+<li><strong>帖子标识和判断结果：</strong>帖子的 status ID、返回的概率及分类字段、本地缓存时间戳，用于匹配标签及避免重复调用。status ID 在本地使用，不作为独立字段发送给 TypeSafe API。</li>
+<li><strong>认证信息：</strong>你输入的 TypeSafe API key。它作为请求认证头发送给 TypeSafe，不放入帖子正文。</li>
+<li><strong>设置与诊断信息：</strong>启用状态、数据传输同意版本、阈值、语言、显示设置、模型和缓存重置状态，以及当前标签页的计数、token 数和最近一次请求错误。</li>
+</ul>
+<p>Xtags 不申请访问 Chrome 完整浏览历史数据库、密码或 X 登录 Cookie；不主动提取私信或读取无关网站。这不代表帖子正文中原本存在的个人或敏感信息会被去除。</p>
+<h2>2. 数据发送给谁</h2>
+<p>扩展通过 HTTPS 直接调用由 TypeSafe AI, Inc. 运营的 <code>https://api.typesafe.ai/v1/systemone</code>。请求包含提取的正文、作者账号、固定分类问题和所选模型，并使用你的 API key 认证。请求不经过 Xtags 开发者运营的服务器。</p>
+<p>TypeSafe 必然能够接收 IP 地址、请求时间等连接信息。其政策说明了输入及服务元数据的处理、保留和可能在美国进行的处理。截至 2026 年 9 月 20 日核对时，TypeSafe 表示不会使用输入训练或微调模型。这是 TypeSafe 自身的声明，不是 Xtags 另行作出的保证；其政策未给出 API 输入的固定删除期限。详见 <a href="https://typesafe.ai/legal/privacy-policy" rel="noreferrer">TypeSafe 隐私政策</a>。</p>
+<h2>3. 本地存储和保留</h2>
+<p>API key 和设置存放在 <code>chrome.storage.local</code>，不使用 Chrome Sync 同步。判断缓存最多关联 3,000 个帖子 ID。扩展缓存不主动持久保存来源帖子的正文或作者账号，这些信息在排队和处理请求时保留于内存。缓存没有固定到期时间，直到被清空、淘汰、因模型或缓存格式变化而失效，或随扩展卸载而删除。</p>
+<p>当前标签页的计数和错误保留在该页面内存。Xtags 不加密本地存储，以你本机用户身份运行的进程可能访问这些数据。HTTPS 保护传输过程，不代表本地存储已加密。</p>
+<h2>4. 停止处理和删除数据</h2>
+<ul>
+<li>首次使用或从无同意记录的旧版本升级时，扩展不会分类。阅读弹窗说明，勾选未预选的同意项并点击<strong>同意并启用</strong>，才能开始处理。语言切换不会重置同意；如数据处理方式变化而需要重新同意，将要求再次确认。</li>
+<li>点击<strong>撤回同意并暂停</strong>可撤销本地同意状态、停止排队请求并尝试取消在途请求。撤回不会删除 key 或缓存；你仍可清空 key 和缓存。已经发送给 TypeSafe 的数据无法撤回。</li>
+<li>在弹窗中关闭<strong>启用</strong>，可停止安排请求并尝试取消正在进行的请求。暂停不能撤回已经到达 TypeSafe 的数据。</li>
+<li>删除本地判断时，请<strong>先暂停，再点清空缓存</strong>。在启用状态下清空缓存，可能立即产生新请求并重建缓存。</li>
+<li>要删除保存的 key，请清空 API key 输入框并移出焦点以保存。卸载扩展会删除其 Chrome 本地存储。若不再使用该 key，还应在 TypeSafe 账户中撤销它。</li>
+<li>删除本地数据不会删除 TypeSafe 已保留的数据；服务商侧的数据请求请通过其隐私政策提供的渠道处理。</li>
+</ul>
+<h2>5. 有限使用和共享</h2>
+<p>Xtags 对用户数据的使用遵守 Chrome 网上应用店用户数据政策，包括 Limited Use（有限使用）要求。扩展仅为已披露的帖子标注功能处理数据，不出售用户数据，不用于个性化广告，也不用于信用或借贷决策。扩展唯一自动向第三方传输的数据，是 TypeSafe 完成分类所必需的数据。</p>
+<p>开发者不接收分类请求流量，也没有用于查看帖子内容的后端；开发者不安排人员审阅这些数据。你明确提交给支持渠道的信息仅用于处理支持请求；其他访问或披露限于安全所必需或法律要求的情形。这里描述的是 Xtags 的处理方式，TypeSafe 自身的数据处理以其政策为准。</p>
+<h2>6. 支持与本网站</h2>
+<p>你发送支持邮件时，开发者及邮件服务商会收到你主动提供的内容。请勿发送 API key、账号密码或私密帖子。你可以通过上述邮箱申请删除支持通信，适用义务另有要求的除外。</p>
+<p>访问 GitHub Pages 上的公开说明网站时，GitHub 可能根据其 <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noreferrer">隐私声明</a>处理访问者的连接信息。这些页面没有额外分析工具、追踪脚本或广告。</p>
+<h2>7. 更新与联系</h2>
+<p>如扩展数据处理方式发生重大变化，将更新本政策，并按适用要求在新处理开始前向用户披露。关于 Xtags 的问题请联系 <a href="mailto:linyishan@gmail.com">linyishan@gmail.com</a>。</p>
+</main><footer>Xtags 为独立项目，与 X Corp 或 TypeSafe AI 无隶属关系。<a href="index.html">项目信息</a></footer>
+</body></html>

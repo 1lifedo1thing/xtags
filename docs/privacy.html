@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Xtags Privacy Policy</title><meta name="description" content="How Xtags handles post text, author handles, API credentials and local cached judgments."><link rel="stylesheet" href="styles.css"></head><body>
+<header><a class="brand" href="index.html"><img src="assets/icon-128.png" alt="">Xtags</a><nav><a href="privacy.zh-CN.html" lang="zh-CN">简体中文</a><a href="support.html">Support</a></nav></header>
+<main>
+<h1>Privacy policy</h1><p class="meta">Last updated: September 20, 2026 · Covers Xtags 0.1.3</p>
+<p>Xtags is developed by yishan. Contact: <a href="mailto:linyishan@gmail.com">linyishan@gmail.com</a>. Its single purpose is to display AI-estimated intent and related signals beside posts you browse on X.</p>
+<p class="notice"><strong>Classification is not entirely local.</strong> After you explicitly agree to the data transfer, enable Xtags and configure a TypeSafe API key, it sends extracted post text and the author's handle to TypeSafe AI for classification. TypeSafe API charges may apply to your account.</p>
+<h2>1. Data the extension handles</h2>
+<ul>
+<li><strong>Post content and author handles:</strong> text extracted from rendered post containers on <code>x.com</code> and <code>twitter.com</code>. This may include links or personal information contained in the post itself. Rendered posts can include posts outside the current viewport and posts accessible only to your signed-in account; Xtags does not verify that each post is public.</li>
+<li><strong>Post identifiers and judgments:</strong> the post's status ID, returned probabilities and classification fields, and a local cache timestamp. These are used to associate labels with the correct post and avoid duplicate API calls. The status ID is used locally and is not a separate field in the TypeSafe API payload.</li>
+<li><strong>Authentication:</strong> the TypeSafe API key that you enter. It is sent to TypeSafe as an authorization header, not included in the post text.</li>
+<li><strong>Preferences and diagnostics:</strong> enabled state, data-transfer consent version, threshold, language, display settings, model and cache reset state; per-tab counters, token counts and the most recent request error.</li>
+</ul>
+<p>Xtags does not request access to your full Chrome browsing-history database, passwords, or X authentication cookies. It does not deliberately extract direct messages or read unrelated websites. These limits do not remove personal or sensitive information that may already be present in a post's text.</p>
+<h2>2. Where the data goes</h2>
+<p>The extension sends classification requests directly over HTTPS to <code>https://api.typesafe.ai/v1/systemone</code>, operated by TypeSafe AI, Inc. Requests contain the extracted text, author handle, fixed classification questions and selected model, with your API key for authentication. No Xtags-operated server proxies these requests.</p>
+<p>TypeSafe necessarily receives connection information such as your IP address and request timing. Its own policy describes processing of input and service metadata, retention and possible processing in the United States. As checked on September 20, 2026, it states that it does not train or fine-tune models on input. This is TypeSafe's statement, not a separate guarantee by Xtags. Its policy does not specify a fixed API-input deletion period. See <a href="https://typesafe.ai/legal/privacy-policy" rel="noreferrer">TypeSafe's privacy policy</a>.</p>
+<h2>3. Local storage and retention</h2>
+<p>Your key and preferences are stored in <code>chrome.storage.local</code>, not Chrome Sync. Cached judgments are associated with up to 3,000 post IDs. The extension's cache does not intentionally persist the source post body or handle; these are held in memory while requests are queued or processed. The cache has no fixed time-to-live. Entries remain until cleared, evicted, invalidated by a model/cache-format change, or removed with the extension.</p>
+<p>Per-tab counters and errors are held in memory for that page. Local storage is not encrypted by Xtags and can be accessible to processes operating as your local user. HTTPS protects transmission; it does not make the browser's local storage encrypted.</p>
+<h2>4. Your controls and deletion</h2>
+<ul>
+<li>New installations and upgrades without a current consent record do not classify posts. Read the notice, select the initially unchecked acknowledgement and click <strong>Agree and enable</strong> to allow processing. Language changes preserve consent; changes to data practices that require renewed consent will prompt you again.</li>
+<li><strong>Withdraw consent and pause</strong> removes the local consent state, stops queued requests and attempts to cancel active requests. Your key and cache are retained; you can still clear them. Data already sent to TypeSafe cannot be recalled.</li>
+<li>Turn off <strong>Enabled</strong> in the popup to stop scheduling requests and attempt to cancel active requests. Data already received by TypeSafe cannot be recalled by pausing.</li>
+<li>To delete local judgments, <strong>pause first, then choose Clear cache</strong>. Clearing while enabled can immediately start new classification requests and rebuild the cache.</li>
+<li>To remove the saved API key, empty the API key field and leave the field so the change is saved. Uninstalling the extension removes its Chrome local storage. Revoke the key in your TypeSafe account if you no longer want it usable.</li>
+<li>Deleting local data does not delete data held by TypeSafe. Contact TypeSafe using the details in its privacy policy for provider-side requests.</li>
+</ul>
+<h2>5. Limited use and sharing</h2>
+<p>Xtags's use of user data complies with the Chrome Web Store User Data Policy, including its Limited Use requirements. The extension uses data only to provide its disclosed post-labeling feature. It does not sell user data, use it for personalized advertising, or use it for credit or lending decisions. Its only automatic third-party transfer is the data necessary for TypeSafe to perform classification.</p>
+<p>The developer does not receive classification traffic or have a backend for reading your posts. The developer does not arrange human review of that data. If you explicitly send information for support, it is used to handle your request; any other access or disclosure is limited to what is necessary for security or required by law. These statements describe Xtags; TypeSafe's own handling is described in its policy.</p>
+<h2>6. Support and this website</h2>
+<p>If you email support, the developer and the email provider receive the information you choose to include. Do not send API keys, account passwords or private posts. You can request deletion of support correspondence by contacting the email above, subject to applicable obligations.</p>
+<p>When you visit the public documentation website on GitHub Pages, GitHub may process visitor connection information under the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noreferrer">GitHub privacy statement</a>. These pages contain no added analytics, tracking scripts or advertising.</p>
+<h2>7. Changes and contact</h2>
+<p>Material changes to the extension's data practices will be reflected in an updated policy and disclosed to users as appropriate before new processing begins. Questions about Xtags can be sent to <a href="mailto:linyishan@gmail.com">linyishan@gmail.com</a>.</p>
+</main><footer>Xtags is independent and is not affiliated with X Corp or TypeSafe AI. <a href="index.html">Project information</a></footer>
+</body></html>
