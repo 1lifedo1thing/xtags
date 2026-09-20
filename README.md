@@ -132,7 +132,7 @@ npm run test:browser     # 真实 DOM / MutationObserver 回归
 
 ## Chrome Web Store 提交准备
 
-商店文案、图片、权限申报、审核说明和发布检查见 [store/README.md](store/README.md)。GitHub Pages 页面位于 `docs/`，尚未上线。运行包可通过 `python3 scripts/package-store.py` 重建；独立设置页中的披露已接入；提交前仍需完成公开政策发布和真实环境验证。
+商店文案、图片、权限申报、审核说明和发布检查见 [store/README.md](store/README.md)。GitHub Pages 已上线：[英文隐私政策](https://manifoldor.github.io/xtags/privacy.html)、[中文隐私政策](https://manifoldor.github.io/xtags/privacy.zh-CN.html)、[支持页](https://manifoldor.github.io/xtags/support.html)，网站源码位于 `docs/`。运行包可通过 `python3 scripts/package-store.py` 重建；独立设置页中的披露已接入；提交前仍需完成真实环境验证和审核访问准备。
 
 ## 许可
 

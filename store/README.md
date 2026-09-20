@@ -1,11 +1,11 @@
 # Xtags Chrome Web Store 提交资料
 
-准备日期：2026-09-20。对应运行时代码：0.1.5。当前状态：**资料已准备，仍有提交前事项；不是已通过审核的版本。** 0.1.5 在独立设置页新增兼容 TypeSafe 的自定义 HTTPS API URL，官方服务仍为默认；未上传商城，也未启用 GitHub Pages。
+准备日期：2026-09-20。对应运行时代码：0.1.5。当前状态：**资料已准备，仍有提交前事项；不是已通过审核的版本。** 0.1.5 在独立设置页新增兼容 TypeSafe 的自定义 HTTPS API URL，官方服务仍为默认；未上传商城；GitHub Pages 已启用并验证上线。
 
 ## 先看结论
 
 1. **产品内披露与同意已接入。** 独立设置页在 key 设置之前展示正文、作者账号、当前 API 接收方、受保护帖子范围和费用；默认未勾选，点击“同意并启用”后才允许后台请求。升级用户没有当前同意记录时保持停用。可撤回同意；本地中英文隐私政策随包提供。
-2. **上线隐私政策。** 已核实仓库公开、主分支 main，但 `has_pages=false`。`docs/` 已可按 GitHub Pages 的 main /docs 模式发布。预期 URL 目前不能作为已上线地址填写。
+2. **隐私政策已上线。** GitHub Pages 发布来源为 main /docs，强制 HTTPS；2026-09-20 已验证中英文政策、主页和支持页无需登录即可访问，内容与源码一致。商城 Privacy policy 可填写下方英文政策地址。
 3. **完成真实 X + TypeSafe 联调。** 现有 31 项后台/语言测试及 30 项浏览器 DOM 测试使用模拟服务。商店需要可工作的真实功能；要覆盖登录页、首页/详情页/引用/回复/长帖、暗色模式、滚动复用及暂停。
 4. **准备审核凭证和主功能截图。** 审核步骤已写好；专用 TypeSafe key/额度和必要的 X 访问方式由发布者在商城私有 Test instructions 字段提供。不要把 key 放进仓库、宣传图、公开政策或 listing。当前图片中设置与 popup 图片是实际界面代码的本地渲染，不能冒充已完成真实 X 联调；建议另加真实时间线截图。
 
@@ -35,12 +35,12 @@
 
 暂沿用现有项目署名 yishan 和 `linyishan@gmail.com`；没有替你验证邮箱收件能力或声明发布主体资格。发布者须确认这些信息以及隐私政策中的 Limited Use 承诺。该政策是根据当前代码准备的可审阅发布稿，不构成审核通过或法律合规保证。
 
-- 预期主页：`https://manifoldor.github.io/xtags/`
-- 预期隐私政策：`https://manifoldor.github.io/xtags/privacy.html`
-- 预期中文隐私政策：`https://manifoldor.github.io/xtags/privacy.zh-CN.html`
-- 预期支持页：`https://manifoldor.github.io/xtags/support.html`
+- 主页：`https://manifoldor.github.io/xtags/`
+- 隐私政策：`https://manifoldor.github.io/xtags/privacy.html`
+- 中文隐私政策：`https://manifoldor.github.io/xtags/privacy.zh-CN.html`
+- 支持页：`https://manifoldor.github.io/xtags/support.html`
 
-以上地址须发布后确认匿名访问成功。不要在未发布时将它们当作可用链接提交。
+以上地址已于 2026-09-20 验证匿名访问成功；后续修改政策后应再次核对线上内容。
 
 ## 官方依据
 

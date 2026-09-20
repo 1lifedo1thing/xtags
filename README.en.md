@@ -56,7 +56,7 @@ Set `CHROME_BIN` if your browser is installed outside a default location. Tests 
 
 ## Chrome Web Store preparation
 
-See [submission materials](store/README.md) for listing copy, artwork, permission explanations, reviewer instructions and remaining checks. The [privacy policy draft](docs/privacy.html) and other GitHub Pages files are in `docs/`; they have not been published. Rebuild the candidate package with `python3 scripts/package-store.py`. The in-product notice is implemented; public policy publication and live testing remain before submission.
+See [submission materials](store/README.md) for listing copy, artwork, permission explanations, reviewer instructions and remaining checks. The [English privacy policy](https://manifoldor.github.io/xtags/privacy.html), [Chinese policy](https://manifoldor.github.io/xtags/privacy.zh-CN.html) and [support page](https://manifoldor.github.io/xtags/support.html) are published on GitHub Pages; their source is in `docs/`. Rebuild the candidate package with `python3 scripts/package-store.py`. The in-product notice is implemented; live testing and reviewer access preparation remain before submission.
 
 Version 0.1.3 adds a prominent data-transfer notice, explicit opt-in and withdrawal. Both new and existing installations require current consent before classification. English and Chinese privacy policies are bundled for offline access.
 
