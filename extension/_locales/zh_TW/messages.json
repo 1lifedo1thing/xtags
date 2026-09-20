@@ -1,0 +1,5 @@
+{
+  "extensionDescription": {
+    "message": "在 X 時間軸上，標示每篇貼文想讓你做什麼。判斷來自 Jev，一個只回傳機率、不生成文字的模型。"
+  }
+}

@@ -1,0 +1,41 @@
+Xtags 0.1.5 — reviewer instructions
+
+This extension has one purpose: display AI-estimated intent labels and related signals beside text posts browsed on X. It does not publish posts, automate likes or follows, or generate replies.
+
+Access requirements
+- Normal access to X is required; some X views require signing in.
+- Classification requires a valid TypeSafe API key and sufficient provider access/credits.
+- The publisher must provide a dedicated, working review key in the private credentials field of the Chrome Web Store Test instructions tab. A key has NOT been included in this repository or package.
+- If the chosen test pages require restricted X access, the publisher must supply a usable, permitted review access method in the same private tab. Do not assume anonymous access will work.
+
+Credentials to fill privately before submission
+TypeSafe review API key: [provide only in the dashboard private field]
+Provider access/expiry and credit availability: [confirm before submission]
+X access instructions, if needed: [provide privately; do not put passwords in this document]
+A tested X page containing an accessible text post: [insert URL after live verification]
+
+Test steps
+1. Install the submitted package and open the Xtags popup.
+2. Choose English from the Language menu, or Auto to follow Chrome's UI language.
+3. Review the prominent data notice and bundled privacy policy in the dedicated Settings page (open it from the popup). The acknowledgement starts unchecked. Check it and click Agree and enable, then enter the supplied TypeSafe review key. Without this action, even an existing key and enabled preference cannot start classification.
+4. Open the publisher-verified X test page and refresh it. Keep the status panel visible. Text posts should receive an intent label with a probability after the API responds.
+5. Set the signal threshold to 0. This should display all three signal probabilities as labels. Restore it to 0.8. Intent labels remain; signal labels depend on the threshold. These changes reuse cached judgments.
+6. Choose Chinese and then English. Existing labels, tooltips and the status panel should translate without new classification requests.
+7. Turn Enabled off while browsing. New queued requests stop, cancellation is attempted for active requests, and labels are removed. Requests already received by the provider may still be charged.
+8. Turn Enabled on again. Cached judgments can be reused. Clear cache in Settings intentionally discards them and may cause new requests while enabled.
+9. In Settings, click Withdraw consent and pause. New requests stop; pending results must not be displayed. The key and cache remain available to clear. Read and accept the notice again to resume.
+10. Open two X tabs containing the same post. The background worker shares classification requests/cache and limits global concurrency to three.
+
+Expected limitations
+- Images, audio and video are not analyzed. Posts without an extracted text body may not be labeled.
+- Reply detection uses English and Chinese UI text heuristics.
+- Labels are AI estimates, not verified claims about authors or posts.
+- Invalid credentials return an error; correct the key or pause/resume to retry failed posts. Temporary errors have limited retries.
+
+Data flow and implementation
+Content scripts on x.com and twitter.com extract text, handles and local post IDs. The background sends text/handle and fixed questions over HTTPS to api.typesafe.ai/v1/systemone using the user's key by default. A custom TypeSafe-compatible HTTPS URL can be saved in Settings, with a specific host permission request and fresh destination-bound consent; changing URLs clears the old key and cache. JSON probabilities are validated and rendered locally. All executable logic is in the submitted package; no remote JavaScript is executed. The developer has no server receiving these requests.
+
+Publisher note — remove this paragraph when completing the private dashboard field:
+Complete the remaining pre-submission checklist. Supply working private review credentials and a verified X URL. Publish the public privacy policy. Do not submit placeholders.
+
+Optional custom-service test: select Custom service, enter a verified compatible HTTPS endpoint, save and grant only that host. Confirm the old key is cleared and classification paused. Consent to the displayed destination and enter a key for that service. Switch back to official and verify the custom key is cleared again. Revoke host access in Chrome and verify requests stop. The publisher must supply any custom test access privately.

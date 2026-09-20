@@ -1,0 +1,65 @@
+# Xtags
+
+English | [简体中文](README.md)
+
+See what each post on your X timeline wants you to do. By default, Xtags uses [Jev](https://docs.typesafe.ai/), a TypeSafe model that returns structured judgments and probabilities rather than generated explanations.
+
+## Install
+
+1. Download and extract the extension package, or use this repository's `extension/` directory.
+2. Open `chrome://extensions` in Chrome and enable **Developer mode**.
+3. Click **Load unpacked** and select the extracted directory containing `manifest.json`.
+4. Open the Xtags popup, click **Settings**, read the data notice and privacy policy, check the acknowledgement and click **Agree and enable**. Enter an API key for your selected service ([TypeSafe by default](https://console.typesafe.ai/settings/keys)). To use a compatible third-party service, first save its full HTTPS API URL and grant access to its host, then consent to that destination.
+5. Open or refresh an X page.
+
+After updating an unpacked extension, reload it on the extensions page and refresh any open X pages.
+
+## Language
+
+The default **Auto (system)** setting follows Chrome's UI language: Chinese locales use Simplified Chinese; all other locales use English. The popup's **Language** menu lets you choose **中文**, **English**, or switch back to automatic selection.
+
+Your choice is saved locally and immediately updates labels, tooltips, the status panel, and extension error messages on open X pages. Switching languages does not clear cached probabilities, cancel active judgments, or trigger new API requests. Chrome controls the language of the extension description in its management UI.
+
+## Labels and settings
+
+Every classified post receives one intent label: **Inform**, **Persuade**, **Provoke**, **Sell**, **Entertain**, or **Other**. The number beside it is the probability of that intent.
+
+Three additional signals appear when they meet the selected threshold:
+
+- **Rage bait**
+- **Undisclosed ad**
+- **Machine-generated**
+
+The threshold accepts values from 0 to 1 and only affects these signals. You can also skip replies, show all signal probabilities, hide the status panel, pause processing, or clear the cache.
+
+## Reliability and privacy
+
+- Post text and the author's handle are sent to the selected API service (TypeSafe by default) for classification. Your API key is stored in `chrome.storage.local` and sent only as authentication to the selected API service; it is not synced to a browser account. Local storage is not encrypted.
+- The background worker owns the persistent cache and deduplicates requests across tabs. At most three requests run concurrently. Labels track their post ID when the timeline reuses DOM nodes.
+- Pausing stops queued requests and attempts to abort active ones. Requests already received by the provider may still incur charges.
+- Each attempt has a 20-second timeout. Network errors, HTTP 429, and server errors receive up to three attempts. Fixing the key or pausing and resuming lets failed posts be tried again.
+- Language and threshold changes reuse raw cached probabilities. Version 0.1.1 introduced a new cache format; caches from earlier versions are rebuilt on first use. Version 0.1.2 adds bilingual UI without changing that format.
+- There is no analytics or telemetry. Counters are held in the current tab's memory. Cost estimates exclude other tabs and any charges from failed requests.
+
+AI labels can be wrong. They are predictions about text, not established facts about a person or a post. This project is independent and not affiliated with, authorized, or endorsed by X Corp. It is intended for personal browsing assistance. Review the [usage notice](README.md) and [MIT license](LICENSE).
+
+## Development and tests
+
+Node.js 20+ is required. Browser tests also need Chrome or Chromium; no npm dependencies are needed.
+
+```bash
+npm test
+npm run test:browser
+```
+
+Set `CHROME_BIN` if your browser is installed outside a default location. Tests use a separate temporary browser profile and mocked APIs; they do not use a real key or incur API charges. They do not replace end-to-end testing on the live X site.
+
+## Chrome Web Store preparation
+
+See [submission materials](store/README.md) for listing copy, artwork, permission explanations, reviewer instructions and remaining checks. The [privacy policy draft](docs/privacy.html) and other GitHub Pages files are in `docs/`; they have not been published. Rebuild the candidate package with `python3 scripts/package-store.py`. The in-product notice is implemented; public policy publication and live testing remain before submission.
+
+Version 0.1.3 adds a prominent data-transfer notice, explicit opt-in and withdrawal. Both new and existing installations require current consent before classification. English and Chinese privacy policies are bundled for offline access.
+
+Version 0.1.4 moves disclosure, consent, API key configuration, cache clearing and version information to a dedicated Settings page. Open it from the popup or Chrome’s extension options. The compact popup keeps language, pause/resume, threshold and display controls. Changes synchronize between both pages.
+
+Version 0.1.5 adds custom HTTPS API endpoints. TypeSafe remains the default. Custom providers must support the TypeSafe System One request/response format; OpenAI chat APIs are not supported. Saving a different URL clears the old key and cache, pauses processing and requires consent to the new destination. Configure a key issued for that service. Custom hosts are authorized individually.

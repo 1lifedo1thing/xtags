@@ -1,0 +1,31 @@
+Xtags
+
+Requirements and data use
+Xtags requires an API key for your selected service and an internet connection. TypeSafe is the default; compatible custom HTTPS APIs are supported. Provider charges may apply. After you explicitly consent and enable it with a key, Xtags sends the text and author handle of posts rendered on X / Twitter to the selected service for classification. This can include posts outside the viewport and protected posts you can access. This is not on-device analysis.
+
+Understand the intent behind posts
+Xtags adds compact AI labels to posts as you browse X. By default, it uses TypeSafe's Jev model to estimate whether a post aims to inform, persuade, provoke, sell, entertain, or do something else.
+
+Three additional signals estimate rage bait, undisclosed promotion, and machine-generated text. Choose a threshold for displaying these signals or show their probabilities. These are model estimates, not verified facts about a post or its author.
+
+Controls that fit your browsing
+• Pause or resume classification from the popup.
+• Skip posts recognized as replies.
+• Adjust the warning-signal threshold.
+• Show or hide the status panel.
+• Reuse locally cached results and clear the cache when needed.
+• Automatically use English or Simplified Chinese based on the browser UI language, or select either language manually.
+
+Getting started
+1. Obtain an API key for your selected service. The default provider is TypeSafe: https://typesafe.ai
+2. Open the Xtags popup and click Settings. Keep the official service, or save a custom TypeSafe-compatible HTTPS endpoint and grant access to its host. Changing the URL clears the saved key and requires new consent. Review the data notice and privacy policy, then check the acknowledgement and click Agree and enable. Enter your key.
+3. Browse X / Twitter with Xtags enabled.
+4. Adjust the threshold and display settings to suit your needs.
+
+Privacy and limitations
+The API key, settings, and a bounded cache of post IDs, scores, and timestamps are stored locally in the browser. The developer operates no analytics or classification server; classification requests go directly to the selected API. That provider also receives normal connection information such as your IP address. Review the linked privacy policy before using the extension.
+
+Xtags analyzes extracted post text, not images or videos. Reply detection and AI classification can be incorrect. Labels do not establish deception, authorship, or the author's actual intent. Xtags is an independent project and is not affiliated with X Corp.
+
+Support: linyishan@gmail.com
+Source code: https://github.com/manifoldor/xtags

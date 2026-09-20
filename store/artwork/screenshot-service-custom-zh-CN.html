@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Xtags Settings</title>
+<style>
+  :root {
+    --ink: #16191c;
+    --ink-2: #5a6670;
+    --ink-3: #8b959c;
+    --rule: #e2e6e8;
+    --accent: #0f5f63;
+    --alert: #b91c1c;
+    --field: #f6f8f8;
+  }
+  * { box-sizing: border-box; }
+  /* [hidden] 的 display:none 来自浏览器默认样式，优先级极低——下面任何一条
+     显式写了 display 的规则都会把它覆盖掉，元素照样显示。必须 !important。 */
+  [hidden] { display: none !important; }
+  body {
+    width: min(100%, 760px);
+    min-height: 100vh;
+    margin: 0 auto;
+    padding: 36px 24px;
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: #fff;
+  }
+  h1 {
+    margin: 0 0 2px;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+  }
+  html { background: #f3f7f5; }
+  h2 { font-size: 18px; margin: 0 0 14px; }
+  #settings { padding: 20px !important; border: 1px solid var(--rule) !important; border-radius: 10px; margin: 20px 0 !important; }
+  .about { padding: 20px; border: 1px solid var(--rule); border-radius: 10px; }
+  .about-body { font-size: 13px !important; }
+  .about-body .note { font-size: 12px !important; }
+  .language-field { max-width: 330px; }
+  .disclosure { padding: 20px !important; }
+  .disclosure p, .consent-check { font-size: 14px !important; }
+  .privacy-links { font-size: 13px !important; }
+  .btn { font-size: 13px; padding: 10px; }
+  @media (max-width: 480px) { body { padding: 20px 16px; } }
+  .sub { color: var(--ink-3); font-size: 11px; margin-bottom: 11px; }
+
+  label.field { display: block; margin-bottom: 8px; }
+  .language-field { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .language-field .lab { margin: 0; }
+  .language-field select { flex: 1; min-width: 0; }
+  .lab {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    color: var(--ink-2);
+    margin-bottom: 4px;
+  }
+  input[type="text"], input[type="password"], input[type="number"], select {
+    width: 100%;
+    padding: 6px 9px;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--field);
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--ink);
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .hint { font-size: 10.5px; color: var(--ink-3); margin-top: 3px; }
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .row span { font-size: 12.5px; }
+  .row input[type="checkbox"] { width: 15px; height: 15px; flex-shrink: 0; accent-color: var(--accent); }
+  .row { gap: 12px; }
+  #status { color: var(--alert); font-size: 11px; }
+
+  .btn {
+    margin-top: 9px;
+    width: 100%;
+    padding: 7px;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--field);
+    font: 500 12px/1 inherit;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .btn:hover { border-color: var(--ink-3); color: var(--ink); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .disclosure { margin-bottom: 12px; padding: 12px; border: 1px solid #8eb6ae; border-left: 4px solid var(--accent); border-radius: 6px; background: #eef6f3; }
+  .disclosure h2 { margin: 0 0 7px; font-size: 14px; }
+  .disclosure p { margin: 7px 0; font-size: 12px; line-height: 1.55; }
+  .privacy-links { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; }
+  .privacy-links a, #getKey { color: var(--accent); text-underline-offset: 2px; }
+  .service-card { padding: 20px; margin-bottom: 20px; border: 1px solid var(--rule); border-radius: 10px; }
+  .service-card p { font-size: 12px; color: var(--ink-2); }
+  #currentEndpoint { display: block; overflow-wrap: anywhere; font-size: 12px; margin: 8px 0; }
+  .consent-check { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; font-size: 12px; }
+  .consent-check input { flex-shrink: 0; margin: 3px 0; accent-color: var(--accent); }
+  #grantConsent { background: var(--accent); color: white; border-color: var(--accent); }
+  #consentStatus { font-weight: 600; color: var(--accent); }
+  #status { margin: 8px 0; }
+  #settings { border: 0; padding: 0; margin: 0; min-width: 0; }
+
+  .about {
+    margin-top: 8px;
+    padding-top: 7px;
+    border-top: 1px solid var(--rule);
+  }
+  .about-toggle {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font: 500 10.5px/1.5 inherit;
+    color: var(--ink-3);
+    cursor: pointer;
+    text-align: left;
+  }
+  .about-toggle:hover { color: var(--ink-2); }
+  .about-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .about-toggle .chev { margin-left: auto; transition: transform .12s ease; }
+  .about-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
+
+  .about-body {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .about-body b { color: var(--ink-2); font-weight: 600; }
+  .about-body a { color: var(--accent); text-decoration: none; }
+  .about-body a:hover { text-decoration: underline; }
+  .about-body .sep { color: var(--rule); }
+  .about-body .note {
+    margin-top: 3px;
+    font-size: 10.5px;
+    line-height: 1.45;
+    color: var(--ink-3);
+  }
+
+  @media (prefers-reduced-motion: reduce) { .about-toggle .chev { transition: none; } }
+</style>
+</head>
+<body hidden>
+  <h1 data-i18n="settingsTitle"></h1>
+  <p class="sub" data-i18n="subtitle"></p>
+
+  <label class="language-field">
+    <span class="lab" data-i18n="language"></span>
+    <select id="language">
+      <option value="auto" data-i18n="languageAuto"></option>
+      <option value="zh" lang="zh-CN">中文</option>
+      <option value="en" lang="en">English</option>
+    </select>
+  </label>
+
+  <section class="service-card" aria-labelledby="serviceTitle">
+    <h2 id="serviceTitle" data-i18n="serviceTitle"></h2>
+    <label class="field"><span class="lab" data-i18n="providerLabel"></span>
+      <select id="provider"><option value="official" data-i18n="providerOfficial"></option><option value="custom" data-i18n="providerCustom"></option></select>
+    </label>
+    <label class="field" id="endpointField" hidden><span class="lab" data-i18n="apiEndpointLabel"></span>
+      <input id="apiEndpoint" type="text" inputmode="url" placeholder="https://api.example.com/v1/systemone" autocomplete="off" spellcheck="false">
+    </label>
+    <p data-i18n="endpointHint"></p>
+    <p data-i18n="endpointChangeNotice"></p>
+    <button class="btn" id="saveEndpoint" data-i18n="saveEndpoint" disabled></button>
+    <p id="endpointPending" role="status" data-i18n="endpointPending" hidden></p>
+  </section>
+  <section class="disclosure" aria-labelledby="disclosureTitle">
+    <h2 id="disclosureTitle" data-i18n="disclosureTitle"></h2>
+    <p data-i18n="disclosureSummary"></p>
+    <span class="lab" data-i18n="currentService"></span><code id="currentEndpoint"></code>
+    <div id="disclosureDetails">
+      <p data-i18n="disclosureScope"></p>
+      <p data-i18n="disclosureLimits"></p>
+    </div>
+    <div class="privacy-links">
+      <a id="privacyPolicy" href="privacy/privacy.html" target="_blank" rel="noopener" data-i18n="privacyPolicy"></a>
+      <a id="providerPrivacy" href="https://typesafe.ai/legal/privacy-policy" target="_blank" rel="noopener noreferrer" data-i18n="providerPrivacy"></a>
+    </div>
+    <div id="consentPrompt">
+      <label class="consent-check"><input id="consentCheck" type="checkbox"><span data-i18n="consentCheck"></span></label>
+      <button class="btn" id="grantConsent" disabled data-i18n="grantConsent"></button>
+    </div>
+    <div id="consentGranted" hidden>
+      <p id="consentStatus" data-i18n="consentGranted" role="status"></p>
+      <button class="btn" id="revokeConsent" data-i18n="revokeConsent"></button>
+      <p data-i18n="withdrawalNote"></p>
+    </div>
+  </section>
+  <p id="status" role="status" hidden></p>
+  <fieldset id="settings" hidden disabled>
+  <h2 data-i18n="preferencesTitle"></h2>
+  <label class="field">
+    <span class="lab" data-i18n="apiKey"></span>
+    <input id="apiKey" type="password" placeholder="ts_..." autocomplete="off" spellcheck="false">
+    <span class="hint" data-i18n="apiKeyHint"></span>
+    <a id="getKey" class="hint" href="https://console.typesafe.ai/settings/keys" target="_blank" rel="noopener noreferrer" data-i18n="getKey"></a>
+  </label>
+
+  <label class="field">
+    <span class="lab" data-i18n="threshold"></span>
+    <input id="threshold" type="number" min="0" max="1" step="0.05">
+    <span class="hint" data-i18n="thresholdHint"></span>
+  </label>
+
+  <label class="row"><span data-i18n="enabled"></span><input id="enabled" type="checkbox"></label>
+  <label class="row"><span data-i18n="skipReplies"></span><input id="skipReplies" type="checkbox"></label>
+  <label class="row"><span data-i18n="showAll"></span><input id="showAll" type="checkbox"></label>
+  <label class="row"><span data-i18n="showHud"></span><input id="showHud" type="checkbox"></label>
+
+  <button class="btn" id="reset"></button>
+  </fieldset>
+
+  <div class="about">
+    <h2 data-i18n="about"></h2>
+    <div class="about-body" id="aboutBody">
+      <div><b id="appname">Xtags</b> <span id="ver">v—</span> · MIT · <b id="author">—</b></div>
+      <div>
+        <a id="homepage" href="#" target="_blank" rel="noopener" hidden>linyishan.com</a>
+        <span class="sep">·</span>
+        <a href="mailto:linyishan@gmail.com">linyishan@gmail.com</a>
+      </div>
+      <div class="note" data-i18n="disclaimer"></div>
+    </div>
+  </div>
+
+  <script src="../../extension/service.js"></script>
+  <script>
+globalThis.chrome={i18n:{getUILanguage:()=>"zh"},runtime:{getManifest:()=>({"manifest_version": 3, "name": "Xtags", "version": "0.1.5", "description": "__MSG_extensionDescription__", "author": "yishan", "homepage_url": "https://linyishan.com", "permissions": ["storage"], "host_permissions": ["https://api.typesafe.ai/*"], "icons": {"16": "icons/on/icon16.png", "32": "icons/on/icon32.png", "48": "icons/on/icon48.png", "128": "icons/on/icon128.png"}, "background": {"service_worker": "background.js"}, "action": {"default_popup": "popup.html", "default_title": "Xtags", "default_icon": {"16": "icons/on/icon16.png", "32": "icons/on/icon32.png"}}, "content_scripts": [{"matches": ["https://x.com/*", "https://twitter.com/*"], "js": ["service.js", "i18n.js", "content.js"], "run_at": "document_idle"}], "default_locale": "en", "options_ui": {"page": "settings.html", "open_in_tab": true}, "optional_host_permissions": ["https://*/*"]})},
+storage:{local:{get:async defaults=>({...defaults,language:"zh"}),set:async()=>{}},
+onChanged:{addListener:()=>{}}}};
+</script><script src="../../extension/i18n.js"></script>
+  <script src="../../extension/settings.js"></script>
+<script>document.getElementById("provider").value="custom";document.getElementById("provider").dispatchEvent(new Event("change"));document.getElementById("apiEndpoint").value="https://api.example.com/v1/systemone";document.getElementById("apiEndpoint").dispatchEvent(new Event("input"));</script></body>
+</html>

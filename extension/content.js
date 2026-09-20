@@ -1,33 +1,42 @@
 /*
- * 内容脚本：提取帖子、贴标签、维护缓存和统计。
+ * 内容脚本：提取帖子、贴标签、维护页面内状态和统计。
  *
  * 它**不发请求**——那件事在 background.js 里做，因为内容脚本的 fetch 受 CORS 约束。
  * 这里只负责 DOM 那一半：读状态、渲染标签、决定什么时候该问。
  *
  * 判断和展示是分开的：background 拿回来的四个判断是"是什么"，怎么组合成标签、
- * 什么时候显示由下面的 compose() 决定。跟 src/triage.ts 里 routeTicket 的分层同理。
+ * 什么时候显示由下面的 compose() 决定。持久化缓存由后台独占管理。
  */
 
 (function () {
   "use strict";
 
   // ── 配置（从 chrome.storage 异步加载）─────────────────────────────────────
+  const CONSENT_VERSION = 1;
   const DEFAULTS = {
     apiKey: "",
     model: "jev-latest",
     threshold: 0.8,
     showAll: false,
-    enabled: true,
+    enabled: false,
+    consentVersion: 0,
+    apiEndpoint: XtagsService.OFFICIAL_URL,
+    consentEndpoint: XtagsService.OFFICIAL_URL,
     skipReplies: true,
     showHud: true,
+    resetToken: 0,
+    language: "auto",
   };
 
-  /** 内容脚本只需要知道"配没配"，不持有 key——请求由 background 发。 */
+  // 配置来自本地存储；请求和持久化缓存统一交给后台。
   let HAS_KEY = false;
   let MODEL = "jev-latest";
+  let RESET_TOKEN = 0;
   let THRESHOLD = 0.8;
   let SHOW_ALL = false;
-  let ENABLED = true;
+  let ENABLED = false;
+  let CONSENTED = false;
+  const serviceConfig = { apiEndpoint: XtagsService.OFFICIAL_URL, consentEndpoint: XtagsService.OFFICIAL_URL, consentVersion: 0 };
   let SKIP_REPLIES = true;
   let SHOW_HUD = true;
 
@@ -63,14 +72,12 @@
     alarm: { fg: "#b91c1c", bg: "rgba(185,28,28,.14)", weight: 600 },
   };
 
-  const INTENT_ZH = {
-    inform: "告知",
-    persuade: "说服",
-    provoke: "挑拨",
-    sell: "推销",
-    entertain: "娱乐",
-    other: "其他",
-  };
+  const i18n = XtagsI18n.create();
+  const SIGNALS = [
+    { key: "rage_bait", level: "alarm" },
+    { key: "undisclosed_ad", level: "caution" },
+    { key: "synthetic", level: "violet" },
+  ];
 
   const INTENT_LEVEL = {
     inform: "calm",
@@ -82,21 +89,17 @@
   };
 
   // ── 状态 ──────────────────────────────────────────────────────────────────
-  /**
-   * 缓存结构的版本号。改渲染字段就要 +1。
-   *
-   * 不加这个的话，改动字段名之后旧缓存会被读出来、渲染成一堆 undefined——而且
-   * 因为请求不会被重发，你只会看到空白标签，看不出是缓存的问题。
-   */
-  const CACHE_VERSION = 3;
-
-  let cache = new Map();
-  const inflight = new Set();
-  /** 失败过的 id。不重试，否则一条一直失败的帖子会变成死循环。 */
+  // 只缓存原始概率；每次渲染都应用当前阈值。
+  const cache = new Map();
+  const inflight = new Map();
   const failed = new Set();
+  const skipped = new Set();
   let queue = [];
   let active = 0;
+  let generation = 0;
   let lastContainerCount = 0;
+  let booted = false;
+  const earlyChanges = {};
 
   const stats = {
     seen: 0,
@@ -117,106 +120,79 @@
    * 警示部分在变，前后对比才看得清。
    */
   function compose(a) {
-    const t = THRESHOLD;
-    const signals = [];
-
-    if (a.rage_bait.noul >= t) {
-      signals.push({ zh: "诱导愤怒", p: a.rage_bait.noul, level: "alarm" });
-    }
-    if (a.undisclosed_ad.noul >= t) {
-      signals.push({ zh: "未披露推广", p: a.undisclosed_ad.noul, level: "caution" });
-    }
-    if (a.synthetic.noul >= t) {
-      signals.push({ zh: "机器生成", p: a.synthetic.noul, level: "violet" });
-    }
-
     const key = a.intent.choice;
-    // 意图后面跟的"值"是**这个选项自己的概率**，不是 confidence。
-    // confidence 度量的是整个分布有多集中——摆在"告知"后面会被读成"它是告知的
-    // 概率"，那是误导。
-    const intentP =
-      typeof a.intent.probabilities?.[key] === "number"
-        ? a.intent.probabilities[key]
-        : a.intent.confidence;
-
+    const signals = SIGNALS.map(({ key, level }) => ({ key, level, p: a[key].noul }));
     return {
-      intentZh: INTENT_ZH[key] ?? key,
+      intent: i18n.t(key),
       intentLevel: INTENT_LEVEL[key] ?? "calm",
-      intentP,
-      signals,
-      probs: {
-        诱导愤怒: a.rage_bait.noul,
-        未披露推广: a.undisclosed_ad.noul,
-        机器生成: a.synthetic.noul,
-      },
+      intentP: a.intent.probabilities[key],
+      signals: signals.filter((signal) => signal.p >= THRESHOLD),
+      allSignals: signals,
       tip: tooltip(a),
-      at: Date.now(),
     };
   }
 
   function tooltip(a) {
-    const p = (x) => x.toFixed(3);
-    const key = a.intent.choice;
     return [
-      `意图        ${INTENT_ZH[key] ?? key}  (${key})   置信 ${p(a.intent.confidence)}`,
-      `诱导愤怒    ${p(a.rage_bait.noul)}`,
-      `未披露推广  ${p(a.undisclosed_ad.noul)}`,
-      `机器生成    ${p(a.synthetic.noul)}`,
+      `${i18n.t("intent")}  ${i18n.t(a.intent.choice)} (${a.intent.choice})   ${i18n.t("confidence")} ${a.intent.confidence.toFixed(3)}`,
+      ...SIGNALS.map(({ key }) => `${i18n.t(key)}  ${a[key].noul.toFixed(3)}`),
     ].join("\n");
   }
 
   // ── 请求（走 background，内容脚本自己 fetch 会被 CORS 挡）──────────────────
-  function ask(state) {
+  function ask(job) {
     return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ type: "jev-ask", state }, (res) => {
-        if (chrome.runtime.lastError) {
-          return reject(new Error(chrome.runtime.lastError.message));
-        }
-        if (!res) return reject(new Error("background 没有响应"));
-        if (!res.ok) return reject(new Error(res.error));
+      chrome.runtime.sendMessage({
+        type: "jev-ask",
+        apiEndpoint: serviceConfig.apiEndpoint, id: job.id, state: job.state, model: MODEL, resetToken: RESET_TOKEN,
+      }, (res) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (!res) return reject(Object.assign(new Error("background did not respond"), { code: "errorNoResponse" }));
+        if (!res.ok) return reject(Object.assign(new Error(res.error), { cancelled: res.cancelled, code: res.code }));
         resolve(res.data);
       });
     });
   }
 
+  function invalidateRequests() {
+    generation++;
+    queue = [];
+    inflight.clear();
+    failed.clear();
+  }
+
   function pump() {
+    if (!CONSENTED || !ENABLED || !HAS_KEY) return;
     while (active < MAX_INFLIGHT && queue.length > 0) {
       const job = queue.shift();
       active++;
-      ask(job.state)
+      ask(job)
         .then((r) => {
+          if (job.generation !== generation || !CONSENTED || !ENABLED || !HAS_KEY) return;
+          const verdict = compose(r.answers);
           stats.asked++;
           stats.tokens += r.usage?.input_tokens ?? 0;
-          const verdict = compose(r.answers);
           if (verdict.signals.length > 0) stats.labeled++;
-          cache.set(job.id, verdict);
-          persistCache();
+          cache.delete(job.id);
+          cache.set(job.id, r.answers);
+          while (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value);
+          if (r.warning) stats.lastError = { code: r.warningCode, detail: r.warning };
           paint(job.id);
         })
         .catch((e) => {
+          if (job.generation !== generation || e.cancelled) return;
           stats.failed++;
-          stats.lastError = e.message;
+          stats.lastError = { code: e.code, detail: e.message };
           failed.add(job.id);
           console.warn("[xtags] 请求失败:", e.message);
         })
         .finally(() => {
           active--;
+          if (inflight.get(job.id) === job) inflight.delete(job.id);
           refreshUi();
           pump();
         });
     }
-  }
-
-  let persistTimer = null;
-  function persistCache() {
-    clearTimeout(persistTimer);
-    persistTimer = setTimeout(() => {
-      if (cache.size > CACHE_LIMIT) {
-        const sorted = [...cache.entries()].sort((a, b) => a[1].at - b[1].at);
-        for (const [k] of sorted.slice(0, Math.floor(cache.size / 2))) cache.delete(k);
-      }
-      chrome.storage.local.set({ cache: Object.fromEntries(cache) });
-    }, 1500);
   }
 
   // ── 提取 ──────────────────────────────────────────────────────────────────
@@ -249,7 +225,7 @@
     const text = textEl.innerText.trim();
     if (!text) return null;
 
-    const statusLink = el.querySelector('a[href*="/status/"]');
+    const statusLink = findTimeAnchor(el);
     const id = statusLink?.getAttribute("href")?.match(/status\/(\d+)/)?.[1];
     if (!id) return null;
 
@@ -291,41 +267,43 @@
     return null;
   }
 
-  function makeBadge(entry) {
+  function makeBadge(id, entry) {
     // 放在 header 行里，必须是 inline 的——用 div 会另起一行。
     const wrap = document.createElement("span");
-    wrap.setAttribute(BADGE_ATTR, "1");
+    wrap.setAttribute(BADGE_ATTR, id);
     wrap.title = entry.tip;
+    wrap.lang = i18n.locale === "zh" ? "zh-CN" : "en";
     wrap.style.cssText =
-      "display:inline-flex;align-items:center;gap:4px;margin-left:8px;" +
+      "display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;margin-left:8px;max-width:calc(100% - 8px);" +
       "vertical-align:baseline;font:500 11px/1.3 " +
       "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;";
 
-    wrap.appendChild(chip(`${entry.intentZh} ${entry.intentP.toFixed(2)}`, entry.intentLevel));
+    wrap.appendChild(chip(`${entry.intent} ${entry.intentP.toFixed(2)}`, entry.intentLevel));
     for (const s of entry.signals) {
-      wrap.appendChild(chip(`${s.zh} ${s.p.toFixed(2)}`, s.level));
+      wrap.appendChild(chip(`${i18n.t(s.key)} ${s.p.toFixed(2)}`, s.level));
     }
     if (SHOW_ALL) {
-      for (const [name, p] of Object.entries(entry.probs)) {
-        wrap.appendChild(chip(`${name} ${p.toFixed(2)}`, "calm"));
+      for (const { key, p } of entry.allSignals) {
+        wrap.appendChild(chip(`${i18n.t(key)} ${p.toFixed(2)}`, "calm"));
       }
     }
     return wrap;
   }
 
   function paint(id) {
-    const entry = cache.get(id);
-    if (!entry) return;
+    const answers = cache.get(id);
+    if (!CONSENTED || !ENABLED || !HAS_KEY || !answers) return;
+    const entry = compose(answers);
     for (const el of document.querySelectorAll(POST_SELECTOR)) {
       const post = extract(el);
-      if (!post || post.id !== id) continue;
+      if (!post || post.id !== id || (SKIP_REPLIES && isReply(el))) continue;
 
       const existing = el.querySelector(`[${BADGE_ATTR}]`);
       if (existing) existing.remove();
 
       const anchor = findTimeAnchor(el);
       if (!anchor || !anchor.parentElement) continue;
-      anchor.parentElement.insertBefore(makeBadge(entry), anchor.nextSibling);
+      anchor.parentElement.insertBefore(makeBadge(id, entry), anchor.nextSibling);
     }
   }
 
@@ -335,38 +313,37 @@
 
   // ── 主循环 ────────────────────────────────────────────────────────────────
   function scan() {
-    if (!ENABLED || !HAS_KEY) return;
+    if (!CONSENTED || !ENABLED || !HAS_KEY) return;
 
     const containers = document.querySelectorAll(POST_SELECTOR);
     lastContainerCount = containers.length;
 
     for (const el of containers) {
-      if (SKIP_REPLIES && isReply(el)) {
-        stats.skipped++;
+      const post = extract(el);
+      const existing = el.querySelector(`[${BADGE_ATTR}]`);
+      const skip = SKIP_REPLIES && isReply(el);
+      if (existing && (!post || skip || existing.getAttribute(BADGE_ATTR) !== post.id)) existing.remove();
+      if (!post) continue;
+      if (skip) {
+        skipped.add(post.id);
         continue;
       }
-      const post = extract(el);
-      if (!post) continue;
-
       if (cache.has(post.id)) {
-        // 节点可能被虚拟列表回收后重用，确认标签还在
         if (!el.querySelector(`[${BADGE_ATTR}]`)) paint(post.id);
         continue;
       }
       if (inflight.has(post.id) || failed.has(post.id)) continue;
 
-      inflight.add(post.id);
-      stats.seen++;
-      queue.push({
+      const job = {
         id: post.id,
-        state: {
-          post: {
-            author: post.author ? `@${post.author}` : null,
-            text: post.text,
-          },
-        },
-      });
+        generation,
+        state: { post: { author: post.author ? `@${post.author}` : null, text: post.text } },
+      };
+      inflight.set(post.id, job);
+      stats.seen++;
+      queue.push(job);
     }
+    stats.skipped = skipped.size;
 
     refreshUi();
     pump();
@@ -374,8 +351,8 @@
 
   let scanTimer = null;
   function scheduleScan() {
-    clearTimeout(scanTimer);
-    scanTimer = setTimeout(scan, 250);
+    if (scanTimer !== null) return;
+    scanTimer = setTimeout(() => { scanTimer = null; scan(); }, 250);
   }
 
   // ── 面板 + 统计上报 ───────────────────────────────────────────────────────
@@ -406,6 +383,7 @@
   function ensureHud() {
     if (hud && hud.isConnected) return hud;
     hud = document.createElement("div");
+    hud.setAttribute("data-xtags-hud", "");
     hud.style.cssText =
       "position:fixed;right:16px;top:16px;z-index:2147483000;padding:8px 12px;" +
       "border-radius:6px;" +
@@ -420,21 +398,23 @@
   }
 
   function hudText() {
-    if (!ENABLED) return "Xtags  已暂停";
+    if (!CONSENTED) return `Xtags\n${i18n.t("errorConsentRequired")}`;
+    if (!ENABLED) return `Xtags  ${i18n.t("paused")}`;
+    if (!HAS_KEY) return `Xtags\n${i18n.t("errorNoKey")}`;
     const cost = (stats.tokens / 1e6) * 0.042;
-    let text =
-      `Xtags\n` +
-      `容器   ${lastContainerCount}\n` +
-      `跳过   ${stats.skipped}  ← 回复\n` +
-      `看过   ${stats.seen}\n` +
-      `判定   ${stats.asked}\n` +
-      `标了   ${stats.labeled}  (${stats.asked ? ((stats.labeled / stats.asked) * 100).toFixed(0) : 0}%)\n` +
-      `失败   ${stats.failed}\n` +
-      `token  ${stats.tokens.toLocaleString("en-US")}  ≈$${cost.toFixed(5)}`;
-    if (stats.failed > 0 && stats.lastError) {
-      text += `\n\n最后错误：\n${stats.lastError.slice(0, 160)}`;
-    }
-    return text;
+    const percent = stats.asked ? ((stats.labeled / stats.asked) * 100).toFixed(0) : 0;
+    const lines = [
+      "Xtags",
+      `${i18n.t("containers")}   ${lastContainerCount}`,
+      `${i18n.t("skipped")}   ${stats.skipped}  ← ${i18n.t("replies")}`,
+      `${i18n.t("seen")}   ${stats.seen}`,
+      `${i18n.t("assessed")}   ${stats.asked}`,
+      `${i18n.t("flagged")}   ${stats.labeled}  (${percent}%)`,
+      `${i18n.t("failed")}   ${stats.failed}`,
+      `${i18n.t("tokens")}  ${stats.tokens.toLocaleString(i18n.locale)}` + (serviceConfig.apiEndpoint === XtagsService.OFFICIAL_URL ? `  ≈$${cost.toFixed(5)}` : ""),
+    ];
+    if (stats.lastError) lines.push(`\n${i18n.t("lastError")}:\n${i18n.error(stats.lastError).slice(0, 200)}`);
+    return lines.join("\n");
   }
 
   function refreshUi() {
@@ -445,117 +425,110 @@
       }
     } else {
       if (!hud || !hud.isConnected) ensureHud();
-      hud.textContent = hudText();
+      hud.lang = i18n.locale === "zh" ? "zh-CN" : "en";
+      const text = hudText();
+      if (hud.textContent !== text) hud.textContent = text;
     }
   }
 
   // ── 配置变化（popup 里改的）───────────────────────────────────────────────
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== "local") return;
+  function threshold(value) {
+    const n = Number(value);
+    return value !== null && value !== "" && Number.isFinite(n) && n >= 0 && n <= 1 ? n : 0.8;
+  }
 
-    let needRescan = false;
-
-    if (changes.apiKey) {
-      HAS_KEY = !!changes.apiKey.newValue;
-      needRescan = true;
-    }
-    if (changes.showAll) {
-      SHOW_ALL = !!changes.showAll.newValue;
-      clearBadges();
-      needRescan = true;
-    }
+  function applyChanges(changes) {
+    const lifecycle = ["apiKey", "enabled", "consentVersion", "apiEndpoint", "consentEndpoint", "model", "resetToken"].some((k) => changes[k]);
+    if (lifecycle) invalidateRequests();
+    if (changes.apiKey) HAS_KEY = !!changes.apiKey.newValue;
+    if (changes.enabled) ENABLED = changes.enabled.newValue === true;
+    for (const key of Object.keys(serviceConfig)) if (changes[key]) serviceConfig[key] = changes[key].newValue ?? DEFAULTS[key];
+    CONSENTED = XtagsService.hasConsent(serviceConfig, CONSENT_VERSION);
+    if (changes.model) MODEL = changes.model.newValue || "jev-latest";
+    if (changes.resetToken) RESET_TOKEN = changes.resetToken.newValue ?? 0;
+    if (changes.language) i18n.setPreference(changes.language.newValue);
+    if (changes.showAll) SHOW_ALL = !!changes.showAll.newValue;
     if (changes.skipReplies) {
       SKIP_REPLIES = changes.skipReplies.newValue !== false;
+      skipped.clear();
       stats.skipped = 0;
-      needRescan = true;
     }
-    if (changes.enabled) {
-      ENABLED = changes.enabled.newValue !== false;
-      if (!ENABLED) clearBadges();
-      needRescan = true;
-    }
-    if (changes.showHud) {
-      SHOW_HUD = changes.showHud.newValue !== false;
-      if (!SHOW_HUD && hud) {
-        hud.remove();
-        hud = null;
-      }
-      needRescan = true;
-    }
-    if (changes.threshold) {
-      THRESHOLD = Number(changes.threshold.newValue) || 0.8;
-      // 阈值变了，已有判断的标签要重算——但判断本身没变，不用重新请求。
-      for (const [id, entry] of cache) cache.set(id, rederive(entry));
-      clearBadges();
-      needRescan = true;
-    }
-
-    // popup 里点了"清空缓存"。内存里那份也要清，否则界面上标签还在。
+    if (changes.showHud) SHOW_HUD = changes.showHud.newValue !== false;
+    if (changes.threshold) THRESHOLD = threshold(changes.threshold.newValue);
+    if (changes.model || changes.resetToken || changes.apiEndpoint) cache.clear();
     if (changes.resetToken) {
-      cache.clear();
-      inflight.clear();
-      failed.clear();
-      queue = [];
-      stats.seen = stats.asked = stats.labeled = stats.skipped = 0;
-      stats.failed = stats.tokens = 0;
+      skipped.clear();
+      for (const key of Object.keys(stats)) stats[key] = key === "lastError" ? "" : 0;
+    } else if (lifecycle) {
+      stats.failed = 0;
       stats.lastError = "";
-      clearBadges();
-      needRescan = true;
     }
-
-    if (needRescan) {
-      refreshUi();
+    clearBadges();
+    refreshUi();
+    if (Object.keys(changes).every((key) => key === "language")) {
+      for (const id of cache.keys()) paint(id);
+    } else {
       scan();
+    }
+  }
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local") return;
+    const settings = Object.fromEntries(Object.entries(changes).filter(([key]) => key in DEFAULTS));
+    if (!Object.keys(settings).length) return;
+    if (!booted) Object.assign(earlyChanges, settings);
+    else applyChanges(settings);
+  });
+
+  window.addEventListener("languagechange", () => {
+    if (booted && i18n.preference === "auto") {
+      clearBadges();
+      for (const id of cache.keys()) paint(id);
+      refreshUi();
     }
   });
 
-  /**
-   * 阈值变化时重算标签——判断结果没变，只是"过没过线"变了。
-   * 所以这里不重新请求，只重新组合。原始概率都存着，够用。
-   */
-  function rederive(entry) {
-    const signals = [];
-    if (entry.probs.诱导愤怒 >= THRESHOLD) {
-      signals.push({ zh: "诱导愤怒", p: entry.probs.诱导愤怒, level: "alarm" });
-    }
-    if (entry.probs.未披露推广 >= THRESHOLD) {
-      signals.push({ zh: "未披露推广", p: entry.probs.未披露推广, level: "caution" });
-    }
-    if (entry.probs.机器生成 >= THRESHOLD) {
-      signals.push({ zh: "机器生成", p: entry.probs.机器生成, level: "violet" });
-    }
-    return { ...entry, signals };
+  // 忽略自己的 HUD/标签变动，避免扫描 → 写 DOM → 扫描的反馈循环。
+  function ownNode(node) {
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    return !!el?.closest(`[${BADGE_ATTR}], [data-xtags-hud]`);
+  }
+
+  function onMutations(records) {
+    if (records.some((record) => {
+      if (ownNode(record.target)) return false;
+      if (record.type !== "childList") return true;
+      return [...record.addedNodes, ...record.removedNodes].some((node) => !ownNode(node));
+    })) scheduleScan();
   }
 
   // ── 启动 ──────────────────────────────────────────────────────────────────
   async function boot() {
     const cfg = await chrome.storage.local.get(DEFAULTS);
+    for (const [key, change] of Object.entries(earlyChanges)) cfg[key] = change.newValue;
+    i18n.setPreference(cfg.language);
     HAS_KEY = !!cfg.apiKey;
     MODEL = cfg.model || "jev-latest";
-    THRESHOLD = Number(cfg.threshold) || 0.8;
+    RESET_TOKEN = cfg.resetToken ?? 0;
+    THRESHOLD = threshold(cfg.threshold);
     SHOW_ALL = !!cfg.showAll;
-    ENABLED = cfg.enabled !== false;
+    ENABLED = cfg.enabled === true;
+    for (const key of Object.keys(serviceConfig)) serviceConfig[key] = cfg[key];
+    CONSENTED = XtagsService.hasConsent(serviceConfig, CONSENT_VERSION);
     SKIP_REPLIES = cfg.skipReplies !== false;
     SHOW_HUD = cfg.showHud !== false;
+    booted = true;
 
-    // 缓存版本对不上就整体丢弃——旧结构渲染出来会是一堆 undefined，
-    // 而且因为不重发请求，你只会看到空白标签，看不出原因。
-    const v = await chrome.storage.local.get(["cacheVersion", "cache"]);
-    if (v.cacheVersion !== CACHE_VERSION) {
-      await chrome.storage.local.set({ cache: {}, cacheVersion: CACHE_VERSION });
-      cache = new Map();
-    } else {
-      cache = new Map(Object.entries(v.cache ?? {}));
-    }
-
-    new MutationObserver(scheduleScan).observe(document.body, {
+    new MutationObserver(onMutations).observe(document.body, {
       childList: true,
       subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["href", "data-testid"],
     });
-
     refreshUi();
     scan();
   }
 
-  boot();
+  boot().catch((e) => console.warn("[xtags] 初始化失败:", e.message));
 })();

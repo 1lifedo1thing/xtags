@@ -1,0 +1,152 @@
+{
+  "version": "0.1.5",
+  "package": "xtags-0.1.5-chrome-web-store.zip",
+  "status": "candidate; see PRE_SUBMISSION.md before submission",
+  "sha256": "079b27c54beb2d2870ed08155ebebd715d4f411e9ce7b625f1f6cd533c1e6ea9",
+  "bytes": 54525,
+  "checks": {
+    "manifest_at_root": true,
+    "manifest_references_present": true,
+    "locales_parse": true,
+    "license_included": true,
+    "zip_integrity": true,
+    "runtime_allowlist_only": true
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "bytes": 1063,
+      "sha256": "83c1b213fd15c5a3234299be4b18d7aaf315ceecc9b2a3224cf21e5541d627a0"
+    },
+    {
+      "path": "_locales/en/messages.json",
+      "bytes": 161,
+      "sha256": "700f224f213d25b90dda36f158dddc2e15c40be9443342e6a77f59595028dbf0"
+    },
+    {
+      "path": "_locales/zh_CN/messages.json",
+      "bytes": 190,
+      "sha256": "4bdfa76c736ec51f236cec3de067ccd6c9f70529d7fb1352f818ede7be739ddb"
+    },
+    {
+      "path": "_locales/zh_TW/messages.json",
+      "bytes": 184,
+      "sha256": "20222fc76875d0ff129a81af4c441d4affb202fd9c192d975c94e8658b81d8ce"
+    },
+    {
+      "path": "background.js",
+      "bytes": 13314,
+      "sha256": "d79f6848ee9975d618feb28f6ac50cbf0808110d0e96fd09d45b08f801e7b61f"
+    },
+    {
+      "path": "content.js",
+      "bytes": 21326,
+      "sha256": "4baa2a6de340778f77161be67a63104c73e7f2b9d41129936dca8ceddf2edd53"
+    },
+    {
+      "path": "i18n.js",
+      "bytes": 12152,
+      "sha256": "163bc79ac359a091310870dbf2d6f75f57466d81c59ae30765ff551c006b6726"
+    },
+    {
+      "path": "icons/off/icon128.png",
+      "bytes": 2378,
+      "sha256": "c13dd4282a94b328ecce4df428afffc67abedbefa4b5f068dce082a9c96edd62"
+    },
+    {
+      "path": "icons/off/icon16.png",
+      "bytes": 441,
+      "sha256": "a76d058cd169c5dc01f31233465018577893fb3a7f5773100d2fa8f21239b852"
+    },
+    {
+      "path": "icons/off/icon32.png",
+      "bytes": 767,
+      "sha256": "be9c1b8782b9226ff3004d0cc6ddd84676c0cec86668adc41fd2303a12b3478c"
+    },
+    {
+      "path": "icons/off/icon48.png",
+      "bytes": 861,
+      "sha256": "a0900f467fc0b20790da2befe26bc3977476e9b14673372ed6a80a2ad5962212"
+    },
+    {
+      "path": "icons/on/icon128.png",
+      "bytes": 2389,
+      "sha256": "d9b65384c980b8ae1e1cffe1e8ef7f5b05dd74cc6c3d42040440d665b8aa323c"
+    },
+    {
+      "path": "icons/on/icon16.png",
+      "bytes": 433,
+      "sha256": "47b23fdacdd68811854eef148cf52a6c565de35d2da75aa772d733b11411c133"
+    },
+    {
+      "path": "icons/on/icon32.png",
+      "bytes": 758,
+      "sha256": "910e565bb6b10ffaf5b20c079f14c084cdfa214c46baf66d3362980ef3ddb2eb"
+    },
+    {
+      "path": "icons/on/icon48.png",
+      "bytes": 855,
+      "sha256": "f5633e45ed860496a7396ad4ac79366b2d0581f257bea6e95dd3e1fbeda60596"
+    },
+    {
+      "path": "manifest.json",
+      "bytes": 1077,
+      "sha256": "32af0fd67c6d105e78461a5b9a877dd9914d18fa4a268f8ba6e9ed0dea785e7d"
+    },
+    {
+      "path": "popup.html",
+      "bytes": 4231,
+      "sha256": "9b9f88097d84a49b0a1e4e75fe7dedcb23fca058b292f62145907ccfb07c409a"
+    },
+    {
+      "path": "popup.js",
+      "bytes": 3179,
+      "sha256": "ffa7e5e84f3786e702ca1035adfa61066c44122618fba93b582e8a82c77d9a1c"
+    },
+    {
+      "path": "privacy/assets/icon-128.png",
+      "bytes": 2389,
+      "sha256": "d9b65384c980b8ae1e1cffe1e8ef7f5b05dd74cc6c3d42040440d665b8aa323c"
+    },
+    {
+      "path": "privacy/index.html",
+      "bytes": 2386,
+      "sha256": "e5148debe83770e0b8fc0e6c44b0d466abc7cb42bb32c4ce1ef29d17f298241f"
+    },
+    {
+      "path": "privacy/privacy.html",
+      "bytes": 9111,
+      "sha256": "42309d3485912023dea45e38191afe79b04d65c256b2abefaf112c3a46eaae9b"
+    },
+    {
+      "path": "privacy/privacy.zh-CN.html",
+      "bytes": 8006,
+      "sha256": "06177bef813317352b022f0c36df9f7155eb6bfdf80670b1a9c3a777ce94dfc2"
+    },
+    {
+      "path": "privacy/styles.css",
+      "bytes": 1466,
+      "sha256": "bf82bed578c8f31ddca98605aed4cd493ba56f3b5d4f4394d3df1fec5e67310f"
+    },
+    {
+      "path": "privacy/support.html",
+      "bytes": 3011,
+      "sha256": "35f05b8b3503d16c32623a4a40f93c4df83a165bc60fa4767b0f5cb5c9e09b04"
+    },
+    {
+      "path": "service.js",
+      "bytes": 1313,
+      "sha256": "1484b6988324532b419dd56654d3a2f1aabc12e33b0bca22d0a74c6363c778b4"
+    },
+    {
+      "path": "settings.html",
+      "bytes": 10071,
+      "sha256": "388c29bd3e36c3d6061e880e827c4aad777aea3cd7ae356f24f16fd86c52f20a"
+    },
+    {
+      "path": "settings.js",
+      "bytes": 9599,
+      "sha256": "16c910f15bc538116a13719d4ca6312d7d50797786dd800a25ecb4ba51723483"
+    }
+  ]
+}

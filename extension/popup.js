@@ -1,92 +1,81 @@
 const $ = (id) => document.getElementById(id);
-
+const i18n = XtagsI18n.create();
+const CONSENT_VERSION = 1;
 const DEFAULTS = {
-  apiKey: "",
-  threshold: 0.8,
-  model: "jev-latest",
-  enabled: true,
-  skipReplies: true,
-  showAll: false,
-  showHud: true,
+  apiEndpoint: XtagsService.OFFICIAL_URL, consentEndpoint: XtagsService.OFFICIAL_URL,
+  apiKey: "", consentVersion: 0, enabled: false, threshold: 0.8,
+  skipReplies: true, showAll: false, showHud: true, language: "auto",
 };
-
 const CHECKBOXES = ["enabled", "skipReplies", "showAll", "showHud"];
+const state = { ...DEFAULTS }, earlyChanges = {};
+let loaded = false;
+let statusMessage = "";
+let saving = false;
 
-/** 每个开关的默认值不同（showAll 默认关，其余默认开），所以逐个写清楚。 */
-function readCheckbox(id) {
-  return $(id).checked;
+function renderLanguage() {
+  document.documentElement.lang = i18n.locale === "zh" ? "zh-CN" : "en";
+  for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = i18n.t(el.dataset.i18n);
+  $("language").value = i18n.preference;
+  $("language").disabled = !loaded || saving;
+  $("quickSettings").disabled = !loaded || saving;
+  const accepted = XtagsService.hasConsent(state, CONSENT_VERSION);
+  const configured = accepted && !!state.apiKey;
+  $("enabled").disabled = !configured;
+  for (const id of CHECKBOXES) $(id).checked = id === "enabled" ? configured && state.enabled === true : !!state[id];
+  $("threshold").value = state.threshold;
+  $("setupNotice").hidden = !loaded || configured;
+  $("setupNotice").textContent = i18n.t(accepted ? "setupKey" : "setupConsent");
+  $("status").textContent = statusMessage ? i18n.t(statusMessage) : "";
+  $("status").hidden = !statusMessage;
 }
 
 async function load() {
-  const c = await chrome.storage.local.get(DEFAULTS);
-
-  $("apiKey").value = c.apiKey || "";
-  $("threshold").value = c.threshold ?? 0.8;
-
-  $("enabled").checked = c.enabled !== false;
-  $("skipReplies").checked = c.skipReplies !== false;
-  $("showAll").checked = !!c.showAll;
-  $("showHud").checked = c.showHud !== false;
+  try {
+    Object.assign(state, await chrome.storage.local.get(DEFAULTS), earlyChanges);
+    i18n.setPreference(state.language);
+    loaded = true;
+  } catch { statusMessage = "loadFailed"; }
+  renderLanguage();
+  document.body.hidden = false;
 }
 
-// ── 保存 ────────────────────────────────────────────────────────────────────
-$("apiKey").addEventListener("change", () => {
-  chrome.storage.local.set({ apiKey: $("apiKey").value.trim() });
-});
+async function save(values) {
+  if (!loaded || saving) return;
+  saving = true;
+  renderLanguage();
+  try {
+    await chrome.storage.local.set(values);
+    Object.assign(state, values);
+    i18n.setPreference(state.language);
+    statusMessage = "";
+  } catch { statusMessage = "saveFailed"; }
+  finally { saving = false; renderLanguage(); }
+}
 
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  for (const key of Object.keys(DEFAULTS)) {
+    if (!changes[key]) continue;
+    state[key] = changes[key].newValue ?? DEFAULTS[key];
+    if (!loaded) earlyChanges[key] = state[key];
+  }
+  i18n.setPreference(state.language);
+  renderLanguage();
+});
+window.addEventListener("languagechange", renderLanguage);
+$("language").addEventListener("change", () => save({ language: XtagsI18n.normalize($("language").value) }));
 $("threshold").addEventListener("change", () => {
-  const v = Number($("threshold").value);
-  if (!Number.isFinite(v) || v < 0 || v > 1) {
-    $("threshold").value = 0.8;
-    chrome.storage.local.set({ threshold: 0.8 });
-    return;
+  const value = Number($("threshold").value);
+  save({ threshold: Number.isFinite(value) && value >= 0 && value <= 1 ? value : 0.8 });
+});
+for (const id of CHECKBOXES) $(id).addEventListener("change", () => {
+  if (id === "enabled" && (!XtagsService.hasConsent(state, CONSENT_VERSION) || !state.apiKey)) {
+    renderLanguage(); return;
   }
-  chrome.storage.local.set({ threshold: v });
+  save({ [id]: $(id).checked });
 });
-
-for (const id of CHECKBOXES) {
-  $(id).addEventListener("change", () => {
-    chrome.storage.local.set({ [id]: readCheckbox(id) });
-  });
-}
-
-/**
- * 清空缓存。用 bump 一个 token 而不是直接删 cache 字段——内容脚本的内存里也有
- * 一份缓存，只删存储那份的话它不知道，界面上的标签还在。
- */
-$("reset").addEventListener("click", () => {
-  chrome.storage.local.set({ cache: {}, resetToken: Date.now() });
-  $("reset").textContent = "已清空";
-  setTimeout(() => ($("reset").textContent = "清空缓存"), 1200);
+$("openSettings").addEventListener("click", async () => {
+  try { await chrome.runtime.openOptionsPage(); }
+  catch { statusMessage = "openSettingsFailed"; renderLanguage(); }
 });
-
-// ── 关于面板（默认收起）───────────────────────────────────────────────────
-// 状态只存在内存里，不开存储——popup 一关就重置，"默认不显示"是默认行为而不是配置。
-$("aboutToggle").addEventListener("click", () => {
-  const body = $("aboutBody");
-  const willOpen = body.hidden;
-  body.hidden = !willOpen;
-  $("aboutToggle").setAttribute("aria-expanded", String(willOpen));
-});
-
-// ── 作者信息 ────────────────────────────────────────────────────────────────
-// 从 manifest 读，保持单一来源——改署名只改 manifest.json 一处。
-(function renderByline() {
-  const m = chrome.runtime.getManifest();
-
-  $("appname").textContent = m.name;
-  $("author").textContent = m.author || "未署名";
-  $("ver").textContent = "v" + m.version;
-
-  const url = m.homepage_url || "";
-  // 还是占位符就不显示链接——免得挂一个指向 example.com 的假链接出去。
-  if (url && !/example\.com/.test(url)) {
-    const a = $("homepage");
-    a.href = url;
-    a.textContent = url.replace(/^https?:\/\//, "").replace(/\/+$/, "");
-    a.hidden = false;
-  }
-})();
-
-// ── 启动 ────────────────────────────────────────────────────────────────────
 load();

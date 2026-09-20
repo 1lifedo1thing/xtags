@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Xtags",
-  "version": "0.1.0",
-  "description": "在 X 时间线上，给每条帖子标出它想让你干什么。判断来自 Jev，一个只返回概率、不生成文本的模型。",
+  "version": "0.1.5",
+  "description": "__MSG_extensionDescription__",
   "author": "yishan",
   "homepage_url": "https://linyishan.com",
   "permissions": [
@@ -35,9 +35,19 @@
         "https://twitter.com/*"
       ],
       "js": [
+        "service.js",
+        "i18n.js",
         "content.js"
       ],
       "run_at": "document_idle"
     }
+  ],
+  "default_locale": "en",
+  "options_ui": {
+    "page": "settings.html",
+    "open_in_tab": true
+  },
+  "optional_host_permissions": [
+    "https://*/*"
   ]
 }
