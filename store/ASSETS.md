@@ -2,6 +2,8 @@
 
 | 文件 | 尺寸 | 使用位置 | 来源 |
 | --- | --- | --- | --- |
+| assets/screenshot-labels-zh-CN.png / screenshot-labels-en.png | 1280 × 800 | 建议作为商城第一张截图 | 用户提供的实际标签截图，等比嵌入中英文说明画布，保留原有标签、概率和箭头 |
+| assets/screenshot-labels-original.png | 2512 × 1404 | README 原图；不直接上传商城 | 用户于 2026-09-20 提供并授权公开使用的本人截图 |
 | assets/icon-128.png | 128 × 128 | 扩展图标 | 复用 extension/icons/on/icon128.png |
 | assets/promo-small.png | 440 × 280 | 必需的小宣传图 | 本项目图标、品牌名与 CSS 图形 |
 | assets/promo-marquee.png | 1400 × 560 | 可选的大宣传图 | 同一品牌构图 |
@@ -11,7 +13,7 @@
 
 设置截图使用空 API key、默认设置和本地模拟的 Chrome storage/runtime 接口，设置页展示默认未同意状态和真实披露区域，popup 展示设置入口；没有改写产品控件或伪造分类结果。popup 图外侧说明文字是宣传排版；设置页图直接展示页面。图片不代表完成了真实 X / TypeSafe 联调。当前图片对应 0.1.5 的首次同意界面，已重新生成。以后修改披露界面也应重生成截图。
 
-**提交前补一张真实时间线截图作为主图。** 在已验证的 X 页面实际运行扩展，截取至少一条文本帖子及它的真实标签，避免私人内容、API key、账户敏感信息。建议用自己公开发布且允许展示的测试帖子；不要手工编造概率。尺寸保持 1280 × 800，每种语言最多上传五张截图。英文和简体中文的设置图分别放入对应语言 listing。
+**实际标签截图已补充。** 使用 `screenshot-labels-zh-CN.png` 作为中文商城第一张截图，英文商城可使用 `screenshot-labels-en.png`（图内明确说明界面为简体中文）。原截图中的“挑拨 0.68”和红色箭头均由用户提供，没有重新生成或修改帖子、标签、概率。原图用于中英文 README，商城图片仅将原图等比嵌入 1280 × 800 的 HTML 画布。此截图展示实际效果，不代表已完成全部端到端回归。每种语言最多上传五张截图；后续依次使用快捷操作、设置页及可选自定义服务示例。
 
 宣传图不按 locale 单独提供，因此仅使用品牌名。没有使用 X / Chrome 商标来暗示官方关联，也没有使用外部图库。
 
@@ -28,3 +30,5 @@ python3 scripts/store-artwork.py
 依据：[Chrome Web Store 图片规范](https://developer.chrome.com/docs/webstore/images)。
 
 `assets/screenshot-service-custom-zh-CN.png` 是自定义服务输入示例，URL 为保留示例域名 api.example.com 的未保存草稿；用于展示操作入口，不是可用服务推荐或真实联调结果。
+
+实际标签截图的画布文件为 `store/artwork/screenshot-labels-zh-CN.html` 和 `screenshot-labels-en.html`，通过 `python3 scripts/store-label-screenshots.py` 重新渲染。原图不由设置页图片生成脚本覆盖。

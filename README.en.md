@@ -4,6 +4,10 @@ English | [简体中文](README.md)
 
 See what each post on your X timeline wants you to do. By default, Xtags uses [Jev](https://docs.typesafe.ai/), a TypeSafe model that returns structured judgments and probabilities rather than generated explanations.
 
+![Xtags in use: an intent label appears next to a post](store/assets/screenshot-labels-original.png)
+
+*Actual screenshot provided by the author, with the UI in Simplified Chinese. The red arrow points to the intent label. AI estimates can be incorrect.*
+
 ## Install
 
 1. Download and extract the extension package, or use this repository's `extension/` directory.
