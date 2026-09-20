@@ -13,7 +13,7 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| `listing.en.txt` / `listing.zh-CN.txt` / `listing.zh-TW.txt` | 各语言商店详细说明，可粘贴 |
+| `listing.en.txt` / `listing.zh-CN.txt` | 各语言商店详细说明，可粘贴 |
 | `dashboard-fields.md` | 单一用途、权限理由、远程代码与数据类型申报建议 |
 | `reviewer-instructions.en.txt` | 私有审核说明模板；测试凭证仍需另填 |
 | `disclosure-copy.md` | 已实现的数据上传披露和验收要求 |

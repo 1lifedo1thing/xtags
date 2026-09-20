@@ -8,7 +8,7 @@
 - 版本：`0.1.5`。
 - 英文短描述已在 `_locales/en/messages.json`：`Label the intent behind posts on X with Jev, a model that returns probabilities rather than generated text.`
 - 中文短描述已在 `_locales/zh_CN/messages.json`；详细文案见 listing 文件。
-- 语言：English / 简体中文；zh_TW listing 如使用，说明产品 UI 提供英文和简体中文，不声称有繁体 UI。
+- 语言：English / 简体中文。
 - 分类建议：选择后台中最接近阅读辅助/工具的分类；不要把未经验证的概率标签归为安全检测或内容真实性认证工具。
 - Homepage / Support / Privacy URL：见 GITHUB_PAGES.md；已上线并于 2026-09-20 验证可匿名访问。
 

@@ -2,8 +2,8 @@
   "version": "0.1.5",
   "package": "xtags-0.1.5-chrome-web-store.zip",
   "status": "candidate; see PRE_SUBMISSION.md before submission",
-  "sha256": "079b27c54beb2d2870ed08155ebebd715d4f411e9ce7b625f1f6cd533c1e6ea9",
-  "bytes": 54525,
+  "sha256": "d3ac834e0ccfd7db8354a531fd35b5354861db177a88a4d1a6412c5379b48eb9",
+  "bytes": 54204,
   "checks": {
     "manifest_at_root": true,
     "manifest_references_present": true,
@@ -27,11 +27,6 @@
       "path": "_locales/zh_CN/messages.json",
       "bytes": 190,
       "sha256": "4bdfa76c736ec51f236cec3de067ccd6c9f70529d7fb1352f818ede7be739ddb"
-    },
-    {
-      "path": "_locales/zh_TW/messages.json",
-      "bytes": 184,
-      "sha256": "20222fc76875d0ff129a81af4c441d4affb202fd9c192d975c94e8658b81d8ce"
     },
     {
       "path": "background.js",

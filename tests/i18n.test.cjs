@@ -12,7 +12,7 @@ function setup(systemLanguage, navigatorLanguage = 'en-US') {
 }
 
 test('auto uses Chinese for all Chinese regions and English otherwise', () => {
-  for (const lang of ['zh', 'zh-CN', 'zh-TW', 'zh-HK', 'zh_Hans', 'ZH-cn']) assert.equal(setup(lang).XtagsI18n.resolve('auto'), 'zh');
+  for (const lang of ['zh', 'zh-CN', 'zh-SG', 'zh_Hans', 'ZH-cn']) assert.equal(setup(lang).XtagsI18n.resolve('auto'), 'zh');
   for (const lang of ['en', 'en-GB', 'fr-FR', 'ja-JP', 'de']) assert.equal(setup(lang).XtagsI18n.resolve('auto'), 'en');
 });
 
@@ -46,7 +46,7 @@ test('manifest loads shared translations first and includes native metadata loca
   assert.deepEqual(manifest.content_scripts[0].js, ['service.js', 'i18n.js', 'content.js']);
   assert.equal(manifest.default_locale, 'en');
   const key = manifest.description.match(/^__MSG_(.+)__$/)[1];
-  for (const locale of ['en', 'zh_CN', 'zh_TW']) {
+  for (const locale of ['en', 'zh_CN']) {
     const messages = JSON.parse(fs.readFileSync(path.join(root, '_locales', locale, 'messages.json'), 'utf8'));
     assert.ok(messages[key].message);
     assert.ok(messages[key].message.length <= 132);

@@ -12,7 +12,7 @@ manifest = json.loads((EXT / 'manifest.json').read_text())
 assert manifest['manifest_version'] == 3
 files = ['manifest.json', 'service.js', 'background.js', 'content.js', 'popup.html', 'popup.js', 'settings.html', 'settings.js', 'i18n.js']
 files += [f'icons/{state}/icon{size}.png' for state in ('on', 'off') for size in (16, 32, 48, 128)]
-files += [f'_locales/{locale}/messages.json' for locale in ('en', 'zh_CN', 'zh_TW')]
+files += [f'_locales/{locale}/messages.json' for locale in ('en', 'zh_CN')]
 # Offline policy links must work before the public GitHub Pages deployment.
 files += [f'privacy/{name}' for name in ('index.html', 'privacy.html', 'privacy.zh-CN.html',
                                        'support.html', 'styles.css', 'assets/icon-128.png')]
