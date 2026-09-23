@@ -1,8 +1,8 @@
 # GitHub Pages 发布隐私政策
 
-发布状态（2026-09-23）：GitHub Pages 已启用，发布来源为 **Deploy from a branch → main → /docs**，强制 HTTPS。0.1.8 中英文政策及主页、支持页已在本地更新；推送后需核对线上内容与 `docs/` 及随包 `extension/privacy/` 一致。
+发布状态（2026-09-23）：**0.1.8 已上线并匿名验证。** 源码和资料提交 `b914422` 已推送至 `main`。GitHub Pages 发布来源为 **Deploy from a branch → main → /docs**，强制 HTTPS。公开中英文政策、主页、支持页和样式文件均返回 200，与本地 `docs/` 逐字节一致；随包 `extension/privacy/` 页面也与 `docs/` 一致。
 
-[0.1.5 首次部署](https://github.com/manifoldor/xtags/actions/runs/35491604540)已成功。下列地址此前已匿名验证；0.1.8 更新后需重新验证响应、版本日期和具体披露内容。
+[0.1.5 首次部署](https://github.com/manifoldor/xtags/actions/runs/35491604540)已成功。下列地址于 2026-09-23 再次匿名验证，包含 0.1.8 版本日期和新的全文读取、key 访问范围说明。
 
 ## 已发布地址
 

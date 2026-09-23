@@ -10,7 +10,7 @@
 - 中文短描述已在 `_locales/zh_CN/messages.json`；详细文案见 listing 文件。
 - 语言：English / 简体中文。
 - 分类建议：选择后台中最接近阅读辅助/工具的分类；不要把未经验证的概率标签归为安全检测或内容真实性认证工具。
-- Homepage / Support / Privacy URL：见 GITHUB_PAGES.md；0.1.8 推送后需再次核对内容与可匿名访问状态。
+- Homepage / Support / Privacy URL：见 GITHUB_PAGES.md；0.1.8 已匿名验证，可访问内容与本地 `docs/` 一致。
 
 ## Single purpose description（直接粘贴）
 
