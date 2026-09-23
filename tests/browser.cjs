@@ -13,13 +13,14 @@ const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'xtags-regression-'));
 const original = fs.readFileSync(path.join(root, 'extension/content.js'), 'utf8');
 const source = original.replace('  boot().catch(', '  globalThis.audit = { scan, get cache() { return cache; }, get inflight() { return inflight; } };\n  globalThis.ready = boot().catch(');
 const translations = fs.readFileSync(path.join(root, 'extension/i18n.js'), 'utf8');
+const fullTextSource = fs.readFileSync(path.join(root, 'extension/fulltext.js'), 'utf8');
 const popupMarkup = fs.readFileSync(path.join(root, 'extension/popup.html'), 'utf8').replace(/<script[\s\S]*?<\/script>/g, '');
 const popupCode = fs.readFileSync(path.join(root, 'extension/popup.js'), 'utf8');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'extension/manifest.json'), 'utf8'));
 const settingsMarkup = fs.readFileSync(path.join(root, 'extension/settings.html'), 'utf8').replace(/<script[\s\S]*?<\/script>/g, '');
 const settingsCode = fs.readFileSync(path.join(root, 'extension/settings.js'), 'utf8');
 const serviceCode = fs.readFileSync(path.join(root, 'extension/service.js'), 'utf8');
-const fixtures = { serviceCode, translations, popupMarkup, popupCode, settingsMarkup, settingsCode, manifest };
+const fixtures = { serviceCode, translations, fullTextSource, popupMarkup, popupCode, settingsMarkup, settingsCode, manifest };
 const html = '<!doctype html><meta charset="utf-8"><body><pre id="results">Running</pre><script>const source=' +
   JSON.stringify(source).replace(/</g, '\\u003c') + ';\nconst fixtures=' + JSON.stringify(fixtures).replace(/</g, '\\u003c') + ';\n' + fs.readFileSync(path.join(__dirname, 'content.browser.js'), 'utf8') + '</script>';
 const fixture = path.join(directory, 'test.html'); fs.writeFileSync(fixture, html);

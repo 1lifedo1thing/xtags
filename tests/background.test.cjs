@@ -1,21 +1,24 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
+const { webcrypto } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const serviceSource = fs.readFileSync(path.join(__dirname, '../extension/service.js'), 'utf8');
 const source = fs.readFileSync(path.join(__dirname, '../extension/background.js'), 'utf8');
-const flush = async () => { for (let i = 0; i < 80; i++) await Promise.resolve(); };
+const flush = async () => { for (let i = 0; i < 5; i++) { await new Promise(resolve => setImmediate(resolve)); for (let j = 0; j < 80; j++) await Promise.resolve(); } };
 const answers = (choice = 'inform') => ({
   intent: { choice, confidence: .9, probabilities: { [choice]: .9 } },
   rage_bait: { noul: .7 }, synthetic: { noul: .1 }, undisclosed_ad: { noul: .1 },
 });
 async function setup(options = {}) {
-  const data = options.data ?? { apiKey: 'test-key', model: 'jev-latest', enabled: true, consentVersion: 1, resetToken: 0 };
+  const data = options.data ?? { apiKey: 'test-key', model: 'jev-latest', enabled: true, consentVersion: 2, resetToken: 0 };
   const listeners = [], permissionListeners = [], calls = [], permissionChecks = [], timers = new Map();
+  const accessLevels = {}, sessionData = {};
   let permissionGranted = options.permissionGranted !== false;
   let serial = 0, message, active = 0, maxActive = 0, failWrites = false;
   const storage = {
+    setAccessLevel: async ({ accessLevel }) => { accessLevels.local = accessLevel; },
     get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : Object.keys(keys))
       .map(k => [k, structuredClone(k in data ? data[k] : Array.isArray(keys) ? undefined : keys[k])])),
     set: async (obj) => {
@@ -29,14 +32,18 @@ async function setup(options = {}) {
       for (const fn of listeners) fn(changes, 'local');
     },
   };
+  const session = {
+    setAccessLevel: async ({ accessLevel }) => { accessLevels.session = accessLevel; },
+    set: async (values) => { Object.assign(sessionData, structuredClone(values)); },
+  };
   const context = vm.createContext({
-    console: { warn() {} }, AbortController, URL, importScripts() {},
+    console: { warn() {} }, AbortController, URL, TextEncoder, crypto: webcrypto, importScripts() {},
     setTimeout(fn, ms) { timers.set(++serial, { fn, ms }); return serial; },
     clearTimeout(id) { timers.delete(id); },
     chrome: {
       permissions: { contains: async value => { permissionChecks.push(value); return permissionGranted; }, onRemoved: { addListener(fn) { permissionListeners.push(fn); } } },
       runtime: { id: 'xtags-test', onMessage: { addListener(fn) { message = fn; } }, onInstalled: { addListener() {} }, onStartup: { addListener() {} } },
-      storage: { local: storage, onChanged: { addListener(fn) { listeners.push(fn); } } },
+      storage: { local: storage, session, onChanged: { addListener(fn) { listeners.push(fn); } } },
       action: { setIcon: async () => {} },
     },
     fetch: (url, init) => new Promise((resolve, reject) => {
@@ -52,7 +59,7 @@ async function setup(options = {}) {
   vm.runInContext(serviceSource, context);
   vm.runInContext(source, context);
   await flush();
-  return { data, calls, timers, storage, permissionChecks,
+  return { data, calls, timers, storage, sessionData, accessLevels, permissionChecks,
     async permission(value) { permissionGranted = value; if (!value) for (const fn of permissionListeners) fn({ origins: ["https://proxy.example/*"] }); await flush(); }, get maxActive() { return maxActive; }, set failWrites(v) { failWrites = v; },
     async set(obj) { await storage.set(obj); await flush(); },
     ask(id, extra = {}, sender = {}) {
@@ -60,12 +67,42 @@ async function setup(options = {}) {
         state: { post: { author: '@alice', text: `Post ${id}` } }, ...extra },
       { id: 'xtags-test', url: 'https://x.com/home', ...sender }, resolve));
     },
+    configMessage(sender = {}) {
+      return new Promise(resolve => message({ type: 'xtags-config' },
+        { id: 'xtags-test', url: 'https://x.com/home', ...sender }, resolve));
+    },
     async tick(ms) {
       const timer = [...timers].find(([, v]) => v.ms === ms);
       assert.ok(timer, `expected timer ${ms}`); timers.delete(timer[0]); timer[1].fn(); await flush();
     },
   };
 }
+
+test('persistent storage is trusted-only and content settings never contain the API key', async () => {
+  const e = await setup();
+  assert.equal(e.accessLevels.local, 'TRUSTED_CONTEXTS');
+  assert.equal(e.accessLevels.session, 'TRUSTED_AND_UNTRUSTED_CONTEXTS');
+  const response = await e.configMessage();
+  assert.equal(response.ok, true);
+  assert.equal(response.data.hasKey, true);
+  assert.equal(Object.hasOwn(response.data, 'apiKey'), false);
+  assert.equal(JSON.stringify(e.sessionData).includes('test-key'), false);
+  const pending = e.ask('1'); await flush(); await flush();
+  assert.ok(e.calls[0], `request did not start: ${JSON.stringify(e.data)}`);
+  assert.equal(e.calls[0].init.headers.Authorization, 'Bearer test-key');
+  e.calls[0].respond(); await pending;
+  await e.set({ apiKey: 'replacement-key', keyRevision: 'revision-2' });
+  assert.equal((await e.configMessage()).data.keyRevision, 'revision-2');
+  assert.equal(JSON.stringify(e.sessionData).includes('replacement-key'), false);
+  await e.set({ apiKey: '' });
+  assert.equal((await e.configMessage()).data.hasKey, false);
+  assert.equal(e.sessionData.publicConfig.hasKey, false);
+  await e.set({ threshold: 0.42, language: 'zh' });
+  assert.equal(e.sessionData.publicConfig.threshold, 0.42);
+  assert.equal(e.sessionData.publicConfig.language, 'zh');
+  assert.equal((await e.configMessage({ url: 'https://example.com/' })).ok, false);
+  assert.equal((await e.configMessage({ id: 'other-extension' })).ok, false);
+});
 
 test('global concurrency is limited to three requests across callers', async () => {
   const e = await setup(); const pending = ['1', '2', '3', '4', '5'].map(id => e.ask(id)); await flush();
@@ -84,6 +121,25 @@ test('same post in two tabs shares one request and cache survives worker restart
   assert.deepEqual(Object.keys(e.data.cache), ['1', '2']);
   const next = await setup({ data: e.data }); assert.equal((await next.ask('1')).data.cached, true);
   assert.equal((await next.ask('2')).data.cached, true); assert.equal(next.calls.length, 0);
+});
+
+test('same post ID with a longer body is classified again and replaces the preview cache', async () => {
+  const e = await setup();
+  const preview = e.ask('1', { state: { post: { author: '@alice', text: 'Beginning' } } });
+  await flush(); e.calls[0].respond({ answers: answers('inform') }); await preview;
+  const fullText = 'Beginning, followed by a different conclusion and a sales link';
+  const full = e.ask('1', { state: { post: { author: '@alice', text: fullText } } });
+  await flush(); assert.equal(e.calls.length, 2);
+  assert.equal(JSON.parse(e.calls[1].init.body).state.post.text, fullText);
+  e.calls[1].respond({ answers: answers('sell') });
+  assert.equal((await full).data.answers.intent.choice, 'sell');
+  assert.match(e.data.cache['1'].fingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(JSON.stringify(e.data.cache).includes(fullText), false);
+  const restarted = await setup({ data: e.data });
+  assert.equal((await restarted.ask('1', { state: { post: { author: '@alice', text: fullText } } })).data.cached, true);
+  const oldBody = restarted.ask('1', { state: { post: { author: '@alice', text: 'Beginning' } } });
+  await flush(); assert.equal(restarted.calls.length, 1);
+  restarted.calls[0].respond(); await oldBody;
 });
 
 test('pause aborts running work, drops queue and rejects new requests', async () => {
@@ -142,9 +198,12 @@ test('cache write failure returns a usable result with a visible warning', async
 });
 
 test('stale cache versions and reset generations are discarded on startup', async () => {
-  for (const overrides of [{ cacheVersion: 3 }, { cacheResetToken: 'old' }, { cacheModel: 'old-model' }]) {
-    const e = await setup({ data: { apiKey: 'test', enabled: true, consentVersion: 1, model: 'jev-latest', resetToken: 0,
-      cacheVersion: 4, cacheModel: 'jev-latest', cacheResetToken: 0, cache: { '1': { answers: answers(), at: Date.now() } }, ...overrides } });
+  const digest = await webcrypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ author: '@alice', text: 'Post 1' })));
+  const fingerprint = Buffer.from(digest).toString('hex');
+  for (const overrides of [{ cacheVersion: 5 }, { cacheResetToken: 'old' }, { cacheModel: 'old-model' }]) {
+    const e = await setup({ data: { apiKey: 'test', enabled: true, consentVersion: 2, model: 'jev-latest', resetToken: 0,
+      cacheVersion: 6, cacheModel: 'jev-latest', cacheResetToken: 0,
+      cache: { '1': { answers: answers(), fingerprint, at: Date.now() } }, ...overrides } });
     const result = e.ask('1'); await flush(); assert.equal(e.calls.length, 1); e.calls[0].respond(); await result;
   }
 });
@@ -189,7 +248,7 @@ test('timeout and protocol errors expose stable codes for UI translation', async
 });
 
 test('missing, invalid or obsolete consent blocks legacy enabled installs and cached results', async () => {
-  for (const consentVersion of [undefined, 0, -1, 2, '1', true]) {
+  for (const consentVersion of [undefined, 0, -1, 1, '2', true]) {
     const e = await setup({ data: { apiKey: 'existing-key', enabled: true, consentVersion,
       cacheVersion: 4, cacheModel: 'jev-latest', cacheResetToken: 0,
       cache: { '1': { answers: answers(), at: Date.now() } } } });
@@ -210,7 +269,7 @@ test('withdrawal alone aborts active work, discards queued and late results; re-
   for (const call of e.calls) call.respond(); await flush();
   assert.equal(e.calls.length, 3); assert.deepEqual(e.data.cache, {});
   assert.equal((await e.ask('5')).code, 'errorConsentRequired');
-  await e.set({ consentVersion: 1, enabled: true });
+  await e.set({ consentVersion: 2, enabled: true });
   const resumed = e.ask('1'); await flush(); e.calls[3].respond();
   assert.equal((await resumed).ok, true);
 });
@@ -221,7 +280,7 @@ test('consent reread blocks retries and result writes before onChanged is delive
   e.data.consentVersion = 0;
   await e.tick(1000);
   assert.equal((await pending).cancelled, true); assert.equal(e.calls.length, 1);
-  await e.set({ consentVersion: 1 });
+  await e.set({ consentVersion: 2 });
   const late = e.ask('2'); await flush();
   e.data.consentVersion = 0; e.calls[1].respond();
   assert.equal((await late).cancelled, true); assert.equal(e.data.cache?.['2'], undefined);
@@ -235,7 +294,7 @@ test('consent versions remain aligned across extension contexts', () => {
 
 test('custom service sends compatible payload only to the consented URL without cookies or redirects', async () => {
   const apiEndpoint = 'https://proxy.example/custom/systemone';
-  const e = await setup({ data: { apiEndpoint, consentEndpoint: apiEndpoint, consentVersion: 1,
+  const e = await setup({ data: { apiEndpoint, consentEndpoint: apiEndpoint, consentVersion: 2,
     enabled: true, apiKey: 'custom-key' } });
   const pending = e.ask('1'); await flush();
   assert.equal(e.calls.length, 1); const call = e.calls[0];
@@ -265,7 +324,7 @@ test('destination changes invalidate consent, caches, queued work and stale cont
 
 test('custom service cannot reuse unmarked official cache or bypass revoked host permission', async () => {
   const apiEndpoint = 'https://proxy.example/v1/systemone';
-  const data = { apiEndpoint, consentEndpoint: apiEndpoint, consentVersion: 1, enabled: true,
+  const data = { apiEndpoint, consentEndpoint: apiEndpoint, consentVersion: 2, enabled: true,
     apiKey: 'custom-key', cacheVersion: 4, cacheModel: 'jev-latest', cacheResetToken: 0,
     cache: { '1': { answers: answers(), at: Date.now() } } };
   const blocked = await setup({ data: structuredClone(data), permissionGranted: false });

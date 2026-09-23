@@ -12,11 +12,11 @@ const ENDPOINT = XtagsService.OFFICIAL_URL;
 const QUESTIONS = {
   intent: {
     type: "choice",
-    instructions: "What is `post.text` mainly trying to do?",
+    instructions: "What is `post.text` mainly doing to the reader? Judge its dominant function from the text, not the author's private motive.",
     criteria: {
-      inform: "传达信息或消息，读者能从中得到点什么。",
-      persuade: "论证一个立场，试图改变读者的看法。",
-      provoke: "目的是激起愤怒或对立反应。",
+      inform: "主要传达消息、信息、观察或经历；可以带态度，但不以改变立场或激起对立为主。",
+      persuade: "表达立场、理由或主张，主要想改变读者看法；措辞强烈本身不等于挑拨。",
+      provoke: "主要把读者推向对某人或群体的愤怒、敌视或站队；单纯表达愤怒或批评不算。",
       sell: "推广商品、服务或作者自己的东西。",
       entertain: "逗乐、分享日常、社交性质。",
       other: "以上都不比一般情况更贴切。",
@@ -26,38 +26,42 @@ const QUESTIONS = {
   rage_bait: {
     type: "noul",
     instructions:
-      "Is `post.text` engineered to provoke an angry reaction rather than to inform?",
+      "Does `post.text` use anger or hostility to push readers toward taking sides, attacking someone, or amplifying the post, rather than merely reporting, arguing, or expressing anger?",
     criteria: {
-      true: "把某个人或群体描绘成可鄙的；把一件令人愤怒的事当既成事实陈述而不给证据；或者公然邀请围攻。目的读起来是靠愤怒换互动。",
-      false: "陈述作者看起来确实相信的观点，或者报告一件事——哪怕直白、带党派色彩、或者不客气。",
+      true: "通过群体归罪、贬损、煽动围攻，或以愤怒催促转发和互动，把读者推向敌视或对立；不要求出现命令句。",
+      false: "报告坏消息、提出立场、激烈批评或表达个人愤怒，但没有用措辞推动读者围攻、站队或扩散。未附证据本身不足以判真。",
     },
   },
 
   synthetic: {
     type: "noul",
     instructions:
-      "Does `post.text` read as machine-generated at volume rather than written by a person?",
+      "Does `post.text` read like formulaic, mass-produced copy? Judge textual patterns, not whether AI actually wrote it.",
     criteria: {
-      true: "结构套路化、填充词空泛、挂着一个互动钩子但内容很少，或者带有批量生成帖子的典型措辞。",
-      false: "有个人语气、有具体细节、有错别字，或者有真人打字的那种立场。",
+      true: "明显堆叠模板化结构、空泛套话、重复排比或通用互动钩子，且缺少与主题相关的具体内容；一处常见短语不足以判真。",
+      false: "有具体信息或自然个人语气；文本太短、特征不足时，不因流畅、工整或没有错别字而判为机器生成。",
     },
   },
 
   undisclosed_ad: {
     type: "noul",
     instructions:
-      "Does `post.text` promote something commercially without disclosing that it is an ad?",
+      "Does `post.text` present a commercial recommendation as an independent opinion without visible disclosure? Judge the wording, not whether a payment or partnership actually exists.",
     criteria: {
-      true: "推荐某个产品、链接或账号，读起来是收了钱或有利益关系的，但没有任何广告披露标记。",
-      false: "不是商业推广；或者虽然推广但明显是作者自己的东西（自己的项目、自己的文章）。",
+      true: "对产品、服务、链接或账号作明显推荐并导向购买、关注或点击，同时包装成独立体验或中立评价，帖中看不到广告、合作或利益关系说明。",
+      false: "不是商业推荐；明确写明广告或合作；或者明显在推广自己的项目、作品或服务。仅出现品牌或链接不足以判真。",
     },
   },
 };
 
 // Increment in background, content and popup when data practices require renewed consent.
-const CONSENT_VERSION = 1;
-const DEFAULTS = { apiKey: "", model: "jev-latest", enabled: false, consentVersion: 0, apiEndpoint: ENDPOINT, consentEndpoint: ENDPOINT, resetToken: 0 };
-const CACHE_VERSION = 4;
+const CONSENT_VERSION = 2;
+const DEFAULTS = { apiKey: "", keyRevision: "", model: "jev-latest", enabled: false, consentVersion: 0, apiEndpoint: ENDPOINT, consentEndpoint: ENDPOINT, resetToken: 0 };
+const PUBLIC_DEFAULTS = { threshold: 0.8, showAll: false, skipReplies: true, showHud: true, language: "auto" };
+const PUBLIC_KEYS = ["keyRevision", "model", "enabled", "consentVersion", "apiEndpoint", "consentEndpoint", "resetToken",
+  ...Object.keys(PUBLIC_DEFAULTS)];
+// Cached probabilities are tied to the exact classification questions.
+const CACHE_VERSION = 6;
 const CACHE_LIMIT = 3000;
 const MAX_INFLIGHT = 3;
 const REQUEST_TIMEOUT = 20000;
@@ -70,6 +74,28 @@ let generation = 0;
 let writes = Promise.resolve();
 let configReads = Promise.resolve();
 let settings = null;
+let publicSnapshot = "";
+
+// Restrict the persistent area before reading the key. Only a sanitized,
+// in-memory settings snapshot is exposed to content scripts.
+const storageAccessReady = chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" })
+  .then(() => chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" }));
+
+function publicConfig(cfg) {
+  const visible = Object.fromEntries(PUBLIC_KEYS.map((key) => [key, cfg[key]]));
+  visible.hasKey = !!cfg.apiKey;
+  return visible;
+}
+
+async function publishPublicConfig(cfg) {
+  const visible = publicConfig(cfg);
+  const serialized = JSON.stringify(visible);
+  if (serialized !== publicSnapshot) {
+    await chrome.storage.session.set({ publicConfig: visible });
+    publicSnapshot = serialized;
+  }
+  return visible;
+}
 
 function cancelled() {
   return Object.assign(new Error("设置已变化，请求已取消"), { cancelled: true, code: "errorCancelled" });
@@ -116,7 +142,8 @@ function persistCache(cfg, epoch) {
 // 而不是假定 storage.onChanged 一定先于新请求执行。
 function config() {
   const read = configReads.then(async () => {
-    const cfg = await chrome.storage.local.get(DEFAULTS);
+    await storageAccessReady;
+    const cfg = await chrome.storage.local.get({ ...DEFAULTS, ...PUBLIC_DEFAULTS });
     cfg.model = cfg.model || "jev-latest";
     cfg.resetToken = cfg.resetToken ?? 0;
     if (settings && Object.keys(DEFAULTS).some((k) => settings[k] !== cfg[k])) {
@@ -124,6 +151,7 @@ function config() {
       if (settings.model !== cfg.model || settings.resetToken !== cfg.resetToken || settings.apiEndpoint !== cfg.apiEndpoint) cache.clear();
     }
     settings = cfg;
+    await publishPublicConfig(cfg);
     return cfg;
   });
   configReads = read.catch(() => {});
@@ -138,7 +166,8 @@ const ready = (async () => {
   if ((stored.cacheEndpoint ?? ENDPOINT) === cfg.apiEndpoint && stored.cacheVersion === CACHE_VERSION && stored.cacheModel === cfg.model &&
       stored.cacheResetToken === cfg.resetToken) {
     for (const [id, entry] of Object.entries(stored.cache ?? {}).slice(-CACHE_LIMIT)) {
-      if (/^\d+$/.test(id) && validAnswers(entry?.answers) && Number.isFinite(entry.at)) cache.set(id, entry);
+      if (/^\d+$/.test(id) && /^[a-f0-9]{64}$/.test(entry?.fingerprint) &&
+          validAnswers(entry?.answers) && Number.isFinite(entry.at)) cache.set(id, entry);
     }
   }
 })();
@@ -157,9 +186,10 @@ chrome.runtime.onStartup.addListener(syncIcon);
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   if (changes.enabled || changes.consentVersion || changes.apiEndpoint || changes.consentEndpoint) syncIcon();
-  if (!["enabled", "consentVersion", "apiEndpoint", "consentEndpoint", "apiKey", "model", "resetToken"].some((k) => changes[k])) return;
+  const cacheInputsChanged = ["enabled", "consentVersion", "apiEndpoint", "consentEndpoint", "apiKey", "keyRevision", "model", "resetToken"].some((k) => changes[k]);
+  if (!cacheInputsChanged && !PUBLIC_KEYS.some((k) => changes[k])) return;
   // 即使没有后续请求，也要保存重置和缓存的配置标记。
-  ready.then(config).then((cfg) => persistCache(cfg, generation)).catch((e) => {
+  ready.then(config).then((cfg) => cacheInputsChanged ? persistCache(cfg, generation) : undefined).catch((e) => {
     console.warn("[xtags] 缓存更新失败:", e.message);
   });
 });
@@ -180,6 +210,12 @@ function delay(ms, signal) {
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) abort();
   });
+}
+
+async function fingerprint(post) {
+  const bytes = new TextEncoder().encode(JSON.stringify(post));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function request(job) {
@@ -253,7 +289,7 @@ function pump() {
         await config();
         current(job);
         cache.delete(job.id);
-        cache.set(job.id, { answers: data.answers, at: Date.now() });
+        cache.set(job.id, { answers: data.answers, fingerprint: job.fingerprint, at: Date.now() });
         while (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value);
         let warning = "";
         try { await persistCache(job.cfg, job.generation); }
@@ -263,7 +299,7 @@ function pump() {
       } catch (e) { job.reject(e); }
       finally {
         running.delete(job);
-        if (jobs.get(job.id) === job) jobs.delete(job.id);
+        if (jobs.get(job.key) === job) jobs.delete(job.key);
         pump();
       }
     })();
@@ -284,25 +320,36 @@ async function ask(msg) {
       !(post.author === null || (typeof post.author === "string" && /^@[A-Za-z0-9_]{1,15}$/.test(post.author)))) {
     throw Object.assign(new Error("帖子请求格式无效"), { code: "errorInvalidRequest" });
   }
-  if (cache.has(msg.id)) return { answers: cache.get(msg.id).answers, cached: true, usage: { input_tokens: 0 } };
-  if (jobs.has(msg.id)) {
-    const data = await jobs.get(msg.id).promise;
+  const inputFingerprint = await fingerprint(post);
+  if (epoch !== generation) throw cancelled();
+  const key = `${msg.id}:${inputFingerprint}`;
+  if (cache.get(msg.id)?.fingerprint === inputFingerprint) return { answers: cache.get(msg.id).answers, cached: true, usage: { input_tokens: 0 } };
+  if (jobs.has(key)) {
+    const data = await jobs.get(key).promise;
     return { ...data, shared: true, usage: { input_tokens: 0 } };
   }
   if (jobs.size >= 300) throw Object.assign(new Error("请求队列已满，请稍后刷新页面"), { code: "errorQueueFull" });
-  const job = { id: msg.id, state: { post: { text: post.text, author: post.author } }, cfg, generation: epoch, controller: new AbortController() };
+  const job = { id: msg.id, key, fingerprint: inputFingerprint,
+    state: { post: { text: post.text, author: post.author } }, cfg, generation: epoch, controller: new AbortController() };
   job.promise = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject; });
-  jobs.set(job.id, job);
+  jobs.set(key, job);
   queue.push(job);
   pump();
   return job.promise;
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg?.type !== "jev-ask") return;
+  if (msg?.type !== "jev-ask" && msg?.type !== "xtags-config") return;
   if (sender.id !== chrome.runtime.id || !/^https:\/\/(x|twitter)\.com\//.test(sender.url ?? "")) {
     sendResponse({ ok: false, error: "不支持的消息来源", code: "errorSource" });
     return;
+  }
+  if (msg.type === "xtags-config") {
+    ready.then(config).then(
+      (cfg) => sendResponse({ ok: true, data: publicConfig(cfg) }),
+      () => sendResponse({ ok: false, error: "设置读取失败", code: "errorConfig" }),
+    );
+    return true;
   }
   ask(msg).then(
     (data) => sendResponse({ ok: true, data }),

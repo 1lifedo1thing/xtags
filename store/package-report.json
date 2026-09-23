@@ -1,9 +1,9 @@
 {
-  "version": "0.1.5",
-  "package": "xtags-0.1.5-chrome-web-store.zip",
+  "version": "0.1.8",
+  "package": "xtags-0.1.8-chrome-web-store.zip",
   "status": "candidate; see PRE_SUBMISSION.md before submission",
-  "sha256": "d3ac834e0ccfd7db8354a531fd35b5354861db177a88a4d1a6412c5379b48eb9",
-  "bytes": 54204,
+  "sha256": "6a188188e95f418450062ab4e8708ddfd4ff1af09e7bc8b47c9703d2a92cc7c0",
+  "bytes": 58842,
   "checks": {
     "manifest_at_root": true,
     "manifest_references_present": true,
@@ -30,18 +30,23 @@
     },
     {
       "path": "background.js",
-      "bytes": 13314,
-      "sha256": "d79f6848ee9975d618feb28f6ac50cbf0808110d0e96fd09d45b08f801e7b61f"
+      "bytes": 16230,
+      "sha256": "48f7a4febd06d005aa7cea3e7a21711f1ad6dc6950e20e51bec40c3f885f7f86"
     },
     {
       "path": "content.js",
-      "bytes": 21326,
-      "sha256": "4baa2a6de340778f77161be67a63104c73e7f2b9d41129936dca8ceddf2edd53"
+      "bytes": 26867,
+      "sha256": "7ea6c492e4cf8e77e01e13edb26eadc77f225acb1089310fc78b4b6590c50ce7"
+    },
+    {
+      "path": "fulltext.js",
+      "bytes": 1506,
+      "sha256": "c249b338da8654198b41d665c0132c9fdb18d5deed15a7025691eeede8b634d6"
     },
     {
       "path": "i18n.js",
-      "bytes": 12152,
-      "sha256": "163bc79ac359a091310870dbf2d6f75f57466d81c59ae30765ff551c006b6726"
+      "bytes": 12501,
+      "sha256": "761488e2c87ced7d31dec8716cee3a46477d965388db3f150a9a249d669229cf"
     },
     {
       "path": "icons/off/icon128.png",
@@ -85,8 +90,8 @@
     },
     {
       "path": "manifest.json",
-      "bytes": 1077,
-      "sha256": "32af0fd67c6d105e78461a5b9a877dd9914d18fa4a268f8ba6e9ed0dea785e7d"
+      "bytes": 1287,
+      "sha256": "a4013243054e065f538da26feb7f6ab0d70d7b670b539a20a999ad1d1d11b80e"
     },
     {
       "path": "popup.html",
@@ -96,7 +101,7 @@
     {
       "path": "popup.js",
       "bytes": 3179,
-      "sha256": "ffa7e5e84f3786e702ca1035adfa61066c44122618fba93b582e8a82c77d9a1c"
+      "sha256": "301327b7dea01348cd140537cf45de106839378c4e3aa1620f89a3c5c93f3cc7"
     },
     {
       "path": "privacy/assets/icon-128.png",
@@ -105,18 +110,18 @@
     },
     {
       "path": "privacy/index.html",
-      "bytes": 2386,
-      "sha256": "e5148debe83770e0b8fc0e6c44b0d466abc7cb42bb32c4ce1ef29d17f298241f"
+      "bytes": 2536,
+      "sha256": "e506cc39a7d3587faad186b43d975e42a68124bb7dbd0773ffd88aef11059654"
     },
     {
       "path": "privacy/privacy.html",
-      "bytes": 9111,
-      "sha256": "42309d3485912023dea45e38191afe79b04d65c256b2abefaf112c3a46eaae9b"
+      "bytes": 9990,
+      "sha256": "a4f0417b87a55f50fb9abd4a26edc157d5cd88f270188419fdc4e0df80d6abcf"
     },
     {
       "path": "privacy/privacy.zh-CN.html",
-      "bytes": 8006,
-      "sha256": "06177bef813317352b022f0c36df9f7155eb6bfdf80670b1a9c3a777ce94dfc2"
+      "bytes": 8759,
+      "sha256": "b3017ebf8a97b2ab591113acb2096c97edc77f6cc86bfa9c99c6072ff0d2f51f"
     },
     {
       "path": "privacy/styles.css",
@@ -125,8 +130,8 @@
     },
     {
       "path": "privacy/support.html",
-      "bytes": 3011,
-      "sha256": "35f05b8b3503d16c32623a4a40f93c4df83a165bc60fa4767b0f5cb5c9e09b04"
+      "bytes": 3338,
+      "sha256": "d57330c244eed204aab67e510c38bfdb2a552f168b7610c0299fada15657ef5f"
     },
     {
       "path": "service.js",
@@ -140,8 +145,8 @@
     },
     {
       "path": "settings.js",
-      "bytes": 9599,
-      "sha256": "16c910f15bc538116a13719d4ca6312d7d50797786dd800a25ecb4ba51723483"
+      "bytes": 9739,
+      "sha256": "a9aedf20178a916bfd8c17caf62879cd2527651c2c996c9baf9719e3bbe18801"
     }
   ]
 }

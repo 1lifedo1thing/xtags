@@ -7,36 +7,56 @@
     rage_bait: { noul: .7 }, synthetic: { noul: .1 }, undisclosed_ad: { noul: .1 },
   }, usage: { input_tokens: 100 } });
   const post = (id, reply = false) => `<article data-testid="tweet"><div><a href="/alice">Alice</a><a href="/alice/status/${id}"><time>now</time></a></div>${reply ? '<div>Replying to @bob</div>' : ''}<div data-testid="tweetText">Post ${id}</div></article>`;
-  async function make({ data = {}, html = '', beforeRead, systemLanguage = 'zh-CN' } = {}) {
+  async function make({ data = {}, html = '', beforeRead, systemLanguage = 'zh-CN', fullText = {} } = {}) {
     const frame = document.createElement('iframe'); frames.push(frame); document.body.append(frame);
     const w = frame.contentWindow; w.document.body.innerHTML = html;
-    const store = { apiKey: 'test-only', enabled: true, consentVersion: 1, showHud: false, resetToken: 0, ...data };
+    for (const [id, text] of Object.entries(fullText)) {
+      const article = [...w.document.querySelectorAll('article[data-testid="tweet"]')]
+        .find(el => el.querySelector(`a[href$="/status/${id}"]`));
+      if (article) article.__reactFiber$test = { memoizedProps: { tweet: {
+        id_str: id, note_tweet: { is_expandable: true, text }, full_text: article.querySelector('[data-testid="tweetText"]').innerText,
+      } } };
+    }
+    const store = { apiKey: 'test-only', enabled: true, consentVersion: 2, showHud: false, resetToken: 0, ...data };
+    const publicView = (saved) => ({
+      hasKey: !!saved.apiKey, keyRevision: saved.keyRevision ?? "",
+      enabled: saved.enabled === true, consentVersion: saved.consentVersion ?? 0,
+      apiEndpoint: saved.apiEndpoint ?? 'https://api.typesafe.ai/v1/systemone',
+      consentEndpoint: saved.consentEndpoint ?? 'https://api.typesafe.ai/v1/systemone',
+      model: saved.model ?? 'jev-latest', resetToken: saved.resetToken ?? 0,
+      threshold: saved.threshold ?? .8, showAll: !!saved.showAll, skipReplies: saved.skipReplies !== false,
+      showHud: saved.showHud !== false, language: saved.language ?? 'auto',
+    });
     const calls = [], listeners = [], timers = new Map(); let serial = 0;
     w.setTimeout = (fn, delay) => { timers.set(++serial, { fn, delay }); return serial; };
     w.clearTimeout = id => timers.delete(id);
     async function set(obj) {
-      const changes = {};
-      for (const [k, v] of Object.entries(obj)) { changes[k] = { oldValue: store[k], newValue: v }; store[k] = structuredClone(v); }
-      for (const fn of listeners) fn(changes, 'local');
+      const before = publicView(store);
+      for (const [k, v] of Object.entries(obj)) store[k] = structuredClone(v);
+      const after = publicView(store);
+      for (const fn of listeners) fn({ publicConfig: { oldValue: before, newValue: after } });
       await flush();
     }
     w.chrome = {
       i18n: { getUILanguage: () => systemLanguage },
-      storage: { local: { get: async keys => {
-        const snapshot = { ...keys, ...structuredClone(store) };
-        if (beforeRead) await beforeRead(set);
-        return snapshot;
-      } }, onChanged: { addListener: fn => listeners.push(fn) } },
-      runtime: { sendMessage: (msg, cb) => calls.push({ msg, cb }) },
+      storage: {
+        local: { get: async () => { throw new Error('content script cannot read trusted storage'); } },
+        session: { onChanged: { addListener: fn => listeners.push(fn) } },
+      },
+      runtime: { sendMessage: (msg, cb) => {
+        if (msg.type !== 'xtags-config') { calls.push({ msg, cb }); return; }
+        const snapshot = publicView(store);
+        Promise.resolve().then(() => beforeRead?.(set)).then(() => cb({ ok: true, data: snapshot }));
+      } },
     };
-    w.eval(fixtures.serviceCode); w.eval(fixtures.translations); w.eval(source); await w.ready; await flush();
+    w.eval(fixtures.serviceCode); w.eval(fixtures.translations); w.eval(fixtures.fullTextSource); w.eval(source); await w.ready; await flush();
     return { w, store, calls, timers, set, a: w.audit,
       async systemLanguage(value) { systemLanguage = value; w.dispatchEvent(new w.Event("languagechange")); await flush(); },
       badge(id) { return w.document.querySelector(`[data-xtags-badge="${id}"]`); },
       async reply(index, value = response()) { calls[index].cb({ ok: true, data: value }); await flush(); },
-      async tick() {
-        const timer = [...timers].find(([, v]) => v.delay === 250);
-        assert(timer, 'expected a scheduled scan'); timers.delete(timer[0]); timer[1].fn(); await flush();
+      async tick(delay = 250) {
+        const timer = [...timers].find(([, v]) => v.delay === delay);
+        assert(timer, `expected a ${delay}ms timer`); timers.delete(timer[0]); timer[1].fn(); await flush();
       },
     };
   }
@@ -49,6 +69,65 @@
     const e = await make({ data: { showHud: true } });
     for (let i = 0; i < 8; i++) { e.a.scan(); await flush(); }
     assert(e.timers.size === 0, 'HUD scheduled its own scan');
+  });
+  await test('collapsed long post sends the full Note Tweet before the first classification', async () => {
+    const preview = 'Opening paragraph';
+    const full = `${preview}\n\nA later sales pitch changes the intent.`;
+    const html = post('99').replace('Post 99', preview).replace('</article>',
+      '<button data-testid="tweet-text-show-more-link">Show more</button></article>');
+    const e = await make({ html, fullText: { '99': full } });
+    assert(e.calls.length === 1 && e.calls[0].msg.state.post.text === full, 'preview was classified');
+    await e.reply(0, response('sell'));
+    assert(e.badge('99')?.textContent.includes('推销'), 'full-text judgment was not shown while collapsed');
+    e.w.document.querySelector('[data-testid="tweetText"]').textContent = full;
+    e.w.document.querySelector('[data-testid="tweet-text-show-more-link"]').remove();
+    await flush(); await e.tick();
+    assert(e.calls.length === 1, `expanding unchanged full text classified twice: ${JSON.stringify(e.calls.map(call => call.msg.state.post.text))}`);
+  });
+  await test('missing full text is never classified as the preview', async () => {
+    const html = post('98').replace('</article>',
+      '<button data-testid="tweet-text-show-more-link">Show more</button></article>');
+    const e = await make({ html });
+    assert(e.calls.length === 0 && e.badge('98')?.textContent.includes('全文暂不可用'), 'preview was sent or status missing');
+    const article = e.w.document.querySelector('article');
+    article.__reactFiber$test = {
+      memoizedProps: { tweet: { id_str: '98' } },
+      return: { memoizedProps: { tweet: { id_str: '98', note_tweet: { text: 'Post 98 with the rest' } } } },
+    };
+    await e.tick(500); // Page data can arrive without a DOM mutation.
+    assert(e.calls.length === 1 && e.calls[0].msg.state.post.text === 'Post 98 with the rest', 'late full text was not used');
+    assert(e.timers.size === 0, 'resolved full text kept retry timers');
+  });
+  await test('unavailable full text retries a limited number of times without uploading the preview', async () => {
+    const html = post('97').replace('</article>',
+      '<button data-testid="tweet-text-show-more-link">Show more</button></article>');
+    const e = await make({ html });
+    for (const delay of [500, 1500, 3500]) await e.tick(delay);
+    assert(e.calls.length === 0 && e.timers.size === 0, 'preview was uploaded or retry did not stop');
+    assert(e.badge('97')?.textContent.includes('全文暂不可用'), 'unavailable state disappeared');
+    e.w.document.querySelector('article').remove(); await flush(); await e.tick();
+    e.w.document.body.insertAdjacentHTML('beforeend', html); await flush(); await e.tick();
+    assert([...e.timers.values()].some(timer => timer.delay === 500), 'remounted post did not get a fresh retry budget');
+  });
+  await test('full-text retry survives replacement of a timeline article', async () => {
+    const html = post('95').replace('</article>',
+      '<button data-testid="tweet-text-show-more-link">Show more</button></article>');
+    const e = await make({ html });
+    e.w.document.querySelector('article').outerHTML = html;
+    e.w.document.querySelector('article').__reactFiber$test = {
+      memoizedProps: { tweet: { id_str: '95', note_tweet: { text: 'Post 95 and its later argument' } } },
+    };
+    await flush(); await e.tick(500);
+    assert(e.calls.length === 1 && e.calls[0].msg.state.post.text === 'Post 95 and its later argument',
+      'replaced article was skipped by the pending retry');
+  });
+  await test('pausing clears full-text retry timers', async () => {
+    const html = post('94').replace('</article>',
+      '<button data-testid="tweet-text-show-more-link">Show more</button></article>');
+    const e = await make({ html });
+    assert(e.timers.size === 1, 'full-text retry was not scheduled');
+    await e.set({ enabled: false });
+    assert(e.timers.size === 0 && e.calls.length === 0, 'paused page kept retrying or uploaded the preview');
   });
   await test('reply statistics do not grow on repeated scans', async () => {
     const e = await make({ data: { showHud: true }, html: post('1', true) });
@@ -98,8 +177,19 @@
   await test('corrected API key retries previously failed posts and clears inflight', async () => {
     const e = await make({ html: post('1') }); e.calls[0].cb({ ok: false, error: '401' }); await flush();
     assert(e.a.inflight.size === 0, 'failed request leaked inflight state');
-    await e.set({ apiKey: 'corrected-test-key' }); assert(e.calls.length === 2, 'failed ID still blocked');
+    await e.set({ apiKey: 'corrected-test-key', keyRevision: 'new-key-revision' });
+    assert(e.calls.length === 2, 'failed ID still blocked');
     await e.reply(1); assert(e.badge('1') && e.a.inflight.size === 0, 'successful request leaked state');
+  });
+  await test('a changed post body can recover from a previous request failure', async () => {
+    const e = await make({ html: post('96') });
+    e.calls[0].cb({ ok: false, error: 'network' }); await flush();
+    await e.tick();
+    assert(e.calls.length === 1, 'unchanged failed body retried automatically');
+    e.w.document.querySelector('[data-testid="tweetText"]').textContent = 'Post 96 with a new ending';
+    await flush(); await e.tick();
+    assert(e.calls.length === 2 && e.calls[1].msg.state.post.text === 'Post 96 with a new ending',
+      'new body stayed blocked by the old failure');
   });
   await test('reset ignores old result without deleting new inflight job', async () => {
     const e = await make({ html: post('1') }); await e.set({ resetToken: 'reset-2' });
@@ -230,7 +320,7 @@
     assert(e.w.document.querySelector('[data-xtags-hud]').textContent.includes('数据传输'), 'consent hint missing');
     await e.set({ language: 'en', apiKey: 'another-key', enabled: true });
     assert(e.calls.length === 0, 'settings bypassed consent');
-    await e.set({ consentVersion: 1 }); assert(e.calls.length === 2, 'consent did not start classification');
+    await e.set({ consentVersion: 2 }); assert(e.calls.length === 2, 'consent did not start classification');
     await e.reply(0); assert(e.badge('1'), 'consented result missing');
     await e.set({ consentVersion: 0 }); await e.reply(1);
     assert(!e.badge('1') && !e.badge('2') && !e.a.cache.has('2'), 'withdrawal kept labels or late results');
@@ -240,18 +330,20 @@
     assert(e.calls.length === 0, 'startup used withdrawn consent');
   });
   await test('settings requires unchecked acknowledgement, persists consent, and supports withdrawal', async () => {
-    const store = { enabled: true, apiKey: 'existing-key' };
+    const store = { enabled: true, apiKey: 'existing-key', consentVersion: 1 };
     const e = await makePanel({ store }); const doc = e.w.document;
     const check = doc.getElementById('consentCheck'), grant = doc.getElementById('grantConsent');
-    assert(!check.checked && grant.disabled && doc.getElementById('enabled').disabled, 'legacy user silently enabled');
+    assert(!check.checked && grant.disabled && doc.getElementById('enabled').disabled, 'old consent silently enabled');
     assert(!doc.getElementById('enabled').checked && !doc.getElementById('disclosureDetails').hidden, 'legacy state obscures disclosure');
+    assert(doc.querySelector('[data-i18n="disclosureScope"]').textContent.includes('full text'), 'collapsed full-text transfer missing from notice');
     assert(doc.getElementById('privacyPolicy').getAttribute('href') === 'privacy/privacy.html', 'policy not bundled');
     check.click(); assert(!grant.disabled, 'acknowledgement did not unlock action');
-    assert(store.consentVersion === undefined, 'checkbox alone granted consent');
+    assert(store.consentVersion === 1, 'checkbox alone granted new consent');
     grant.click(); await flush();
-    assert(store.consentVersion === 1 && store.enabled === true && doc.getElementById('consentPrompt').hidden, 'consent not saved');
+    assert(store.consentVersion === 2 && store.enabled === true && doc.getElementById('consentPrompt').hidden, 'consent not saved');
     await e.choose('zh');
-    assert(store.consentVersion === 1 && doc.getElementById('privacyPolicy').getAttribute('href').endsWith('privacy.zh-CN.html'), 'locale lost consent/policy');
+    assert(store.consentVersion === 2 && doc.getElementById('privacyPolicy').getAttribute('href').endsWith('privacy.zh-CN.html'), 'locale lost consent/policy');
+    assert(doc.querySelector('[data-i18n="disclosureScope"]').textContent.includes('全文'), 'Chinese full-text notice missing');
     const reopened = await makePanel({ store });
     assert(reopened.w.document.getElementById('consentPrompt').hidden, 'consent not restored');
     doc.getElementById('revokeConsent').click(); await flush();
@@ -265,7 +357,7 @@
     assert(!doc.getElementById('status').hidden && !doc.getElementById('consentPrompt').hidden, 'failed consent not explained');
     e.failWrites(false); doc.getElementById('grantConsent').click(); await flush();
     e.failWrites(true); doc.getElementById('revokeConsent').click(); await flush();
-    assert(e.store.consentVersion === 1 && doc.getElementById('consentPrompt').hidden, 'failed withdrawal claimed success');
+    assert(e.store.consentVersion === 2 && doc.getElementById('consentPrompt').hidden, 'failed withdrawal claimed success');
     assert(!doc.getElementById('status').hidden, 'failed withdrawal not explained');
   });
   await test('settings keeps requests disabled until consent is persisted and prevents duplicate clicks', async () => {
@@ -278,10 +370,10 @@
     doc.getElementById('grantConsent').click(); await flush();
     assert(writes === 1 && page.calls.length === 0 && !doc.getElementById('enabled').checked, 'consent applied before persistence');
     release(); await flush();
-    assert(page.calls.length === 1 && e.store.consentVersion === 1, 'persisted consent not applied');
+    assert(page.calls.length === 1 && e.store.consentVersion === 2, 'persisted consent not applied');
   });
   await test('settings read failure cannot be mistaken for consent or enable upload', async () => {
-    const e = await makePanel({ store: { enabled: true, consentVersion: 1 }, failRead: true });
+    const e = await makePanel({ store: { enabled: true, consentVersion: 2 }, failRead: true });
     const doc = e.w.document;
     assert(doc.getElementById('consentCheck').disabled && doc.getElementById('grantConsent').disabled, 'unknown state can grant consent');
     assert(doc.getElementById('settings').disabled && !doc.getElementById('enabled').checked, 'failed read looks enabled');
@@ -307,7 +399,11 @@
     const doc = settings.w.document, popup = quick.w.document;
     doc.getElementById('consentCheck').click(); doc.getElementById('grantConsent').click(); await flush();
     assert(popup.getElementById('enabled').disabled, 'missing key did not block quick enable');
-    await settings.set({ apiKey: 'test-only-key' });
+    doc.getElementById('apiKey').value = 'test-only-key';
+    doc.getElementById('apiKey').dispatchEvent(new settings.w.Event('change'));
+    await flush();
+    assert(typeof settings.store.keyRevision === 'string' && settings.store.keyRevision.length > 0,
+      'key change did not update its public revision');
     assert(!popup.getElementById('enabled').disabled && popup.getElementById('enabled').checked, 'key/consent not synchronized');
     await settings.choose('zh'); assert(popup.documentElement.lang === 'zh-CN', 'settings language did not sync');
     await quick.set({ threshold: .4, showAll: true });
@@ -318,7 +414,7 @@
     assert(!popup.getElementById('setupNotice').hidden, 'setup notice not restored');
   });
   await test('quick popup save failure restores the saved enable and threshold state', async () => {
-    const e = await makePanel({ panel: 'popup', store: { consentVersion: 1, apiKey: 'test-only', enabled: true, threshold: .8 } });
+    const e = await makePanel({ panel: 'popup', store: { consentVersion: 2, apiKey: 'test-only', enabled: true, threshold: .8 } });
     const doc = e.w.document; e.failWrites(true);
     doc.getElementById('enabled').click(); await flush();
     assert(doc.getElementById('enabled').checked && e.store.enabled, 'failed pause looks paused');
@@ -327,7 +423,7 @@
   });
 
   await test('custom service save authorizes only the selected host and clears old credentials and consent', async () => {
-    const e = await makePanel({ store: { apiKey: 'official-key', enabled: true, consentVersion: 1 } });
+    const e = await makePanel({ store: { apiKey: 'official-key', enabled: true, consentVersion: 2 } });
     const doc = e.w.document, url = 'https://proxy.example:8443/v1/systemone';
     assert(doc.getElementById('provider').value === 'official', 'official not default');
     doc.getElementById('provider').value = 'custom'; doc.getElementById('provider').dispatchEvent(new e.w.Event('change'));
@@ -341,7 +437,7 @@
     assert(doc.getElementById('currentEndpoint').textContent === url && doc.getElementById('providerPrivacy').hidden, 'wrong recipient/policy shown');
     assert(doc.querySelector('[data-i18n="disclosureSummary"]').textContent.includes('custom service'), 'custom disclosure missing');
     doc.getElementById('consentCheck').click(); doc.getElementById('grantConsent').click(); await flush();
-    assert(e.store.consentEndpoint === url && e.store.consentVersion === 1, 'consent not bound to recipient');
+    assert(e.store.consentEndpoint === url && e.store.consentVersion === 2, 'consent not bound to recipient');
     await e.set({ apiKey: 'custom-key' });
     doc.getElementById('provider').value = 'official'; doc.getElementById('saveEndpoint').click(); await flush();
     assert(e.store.apiEndpoint === 'https://api.typesafe.ai/v1/systemone' && e.store.apiKey === '', 'switching back reused custom key');
@@ -349,12 +445,12 @@
   });
   await test('invalid URL, denied permission and failed save leave the active service and key unchanged', async () => {
     for (const mode of ['invalid', 'denied', 'failed']) {
-      const e = await makePanel({ store: { apiKey: 'official-key', enabled: true, consentVersion: 1 }, allowPermission: mode !== 'denied' });
+      const e = await makePanel({ store: { apiKey: 'official-key', enabled: true, consentVersion: 2 }, allowPermission: mode !== 'denied' });
       const doc = e.w.document; doc.getElementById('provider').value = 'custom';
       doc.getElementById('apiEndpoint').value = mode === 'invalid' ? 'http://proxy.example/api' : 'https://proxy.example/api';
       if (mode === 'failed') e.failWrites(true);
       doc.getElementById('saveEndpoint').click(); await flush();
-      assert(e.store.apiEndpoint === undefined && e.store.apiKey === 'official-key' && e.store.consentVersion === 1, 'failed service change mutated active config');
+      assert(e.store.apiEndpoint === undefined && e.store.apiKey === 'official-key' && e.store.consentVersion === 2, 'failed service change mutated active config');
       assert(!doc.getElementById('status').hidden, 'failure not explained');
       if (mode === 'invalid') assert(e.permissionRequests.length === 0, 'invalid URL requested permission');
     }
@@ -364,7 +460,7 @@
     const apiEndpoint = 'https://proxy.example/v1/systemone';
     await e.set({ apiEndpoint });
     assert(e.calls.length === 1 && !e.badge('1'), 'changed service reused old consent or badge');
-    await e.set({ consentEndpoint: apiEndpoint, consentVersion: 1 });
+    await e.set({ consentEndpoint: apiEndpoint, consentVersion: 2 });
     assert(e.calls.length === 2 && e.calls[1].msg.apiEndpoint === apiEndpoint, 'request not bound to new service');
     await e.reply(1);
     assert(!e.w.document.querySelector('[data-xtags-hud]').textContent.includes('≈$'), 'official pricing applied to custom provider');

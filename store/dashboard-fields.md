@@ -1,16 +1,16 @@
 # 开发者后台填报内容
 
-适用于 0.1.5 当前代码。发布前须同步任何产品改动。以下为基于代码的数据分类建议，不替发布者勾选合规认证。
+适用于 0.1.8 商城候选代码。上传前核对运行包版本、资料及已公开的 GitHub Pages 政策一致。以下为基于代码的数据分类建议，不替发布者勾选合规认证。
 
 ## 名称、描述、分类
 
 - 名称：`Xtags`（以 manifest 为准，不添加“官方”“最佳”“免费无限”等词）。
-- 版本：`0.1.5`。
+- 版本：`0.1.8`；最低 Chrome 版本：`140`。
 - 英文短描述已在 `_locales/en/messages.json`：`Label the intent behind posts on X with Jev, a model that returns probabilities rather than generated text.`
 - 中文短描述已在 `_locales/zh_CN/messages.json`；详细文案见 listing 文件。
 - 语言：English / 简体中文。
 - 分类建议：选择后台中最接近阅读辅助/工具的分类；不要把未经验证的概率标签归为安全检测或内容真实性认证工具。
-- Homepage / Support / Privacy URL：见 GITHUB_PAGES.md；已上线并于 2026-09-20 验证可匿名访问。
+- Homepage / Support / Privacy URL：见 GITHUB_PAGES.md；0.1.8 推送后需再次核对内容与可匿名访问状态。
 
 ## Single purpose description（直接粘贴）
 
@@ -18,7 +18,7 @@ Xtags helps users interpret posts they browse on X by displaying AI-estimated in
 
 ## storage justification（直接粘贴）
 
-Stores the user's selected-service API key, preferences and versioned data-transfer consent locally, and caches raw classification results by post ID to avoid repeated requests. Data is stored in chrome.storage.local, not Chrome Sync. Per-page statistics are held in memory. The extension does not upload local settings to the developer.
+Stores the user's selected-service API key, preferences and versioned data-transfer consent locally, and caches classification results by post ID and a SHA-256 fingerprint of the classified text and author to avoid repeated requests. The cache does not persist raw post text. Persistent data is stored in chrome.storage.local, restricted to trusted extension contexts, not Chrome Sync. Content scripts receive only a sanitized in-memory settings snapshot with a key-present flag through chrome.storage.session. Per-page statistics are held in memory. The extension does not upload local settings to the developer.
 
 ## Host permission justification（直接粘贴）
 
@@ -26,7 +26,7 @@ https://api.typesafe.ai/* is required for the background service worker to send 
 
 ## X / Twitter content-script access（如后台单列该项，直接粘贴）
 
-Content scripts run only on https://x.com/* and https://twitter.com/*. They locate rendered text-post containers, extract post text, author handles and post IDs, and insert labels beside those posts. They do not request the browser's full history database or access unrelated sites. The classifier requires reading the post content to provide the visible labeling feature.
+Content scripts run only on https://x.com/* and https://twitter.com/*. They locate text-post containers, extract post text, author handles and post IDs, and insert labels beside those posts. For collapsed long posts, a packaged script reads the full text already present in X's page data before the user expands the post. That full text is sent to the selected classifier after renewed consent. They do not request the browser's full history database or access unrelated sites. The classifier requires reading the post content to provide the visible labeling feature.
 
 ## Remote code
 
@@ -44,7 +44,7 @@ All executable JavaScript is included in the extension package. The default Type
 
 | 类别 | 建议 | 依据与边界 |
 | --- | --- | --- |
-| Website content | 是 | 提取帖子正文，发送第三方分类 |
+| Website content | 是 | 提取帖子正文；折叠长推文也会读取页面数据中的全文，并发送第三方分类 |
 | Personally identifiable information | 是 | 作者账号；正文可能含身份信息 |
 | Authentication information | 是 | 用户提供的所选服务 API key，本地保存并作为认证头发送 |
 | Web history | 建议是 | 已浏览页面中的帖子 ID 和判断持久缓存，可反映被处理帖子；不读取 Chrome history 数据库。不要把“无 history 权限”等同于不处理浏览相关数据 |

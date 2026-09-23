@@ -6,7 +6,7 @@ See what each post on your X timeline wants you to do. By default, Xtags uses [J
 
 ![Xtags in use: an intent label appears next to a post](store/assets/screenshot-labels-original.png)
 
-*Actual screenshot provided by the author, with the UI in Simplified Chinese. The red arrow points to the intent label. AI estimates can be incorrect.*
+*Actual screenshot provided by the author, with the UI in Simplified Chinese. The red arrow points to the intent label. Its score predates the 0.1.8 criteria update and may differ when judged again. AI estimates can be incorrect.*
 
 ## Install
 
@@ -34,22 +34,26 @@ Three additional signals appear when they meet the selected threshold:
 - **Undisclosed ad**
 - **Machine-generated**
 
+Version 0.1.8 narrows the judgment criteria: forceful criticism or a missing citation alone does not imply rage bait; polished wording in a short post does not establish machine generation; and undisclosed promotion is estimated from the text without claiming an actual payment or partnership. Older judgments are invalidated and revisiting posts may make new API requests.
+
+Collapsed long posts are classified using the full text already present in X's page data, before you click **Show more**. If the full text is temporarily unavailable, Xtags displays **Full text unavailable** instead of classifying the preview. It retries three times automatically, then tries again when the page changes or the post is expanded. This update requires renewed data-transfer consent in Settings and invalidates old preview-based cache entries.
+
 The threshold accepts values from 0 to 1 and only affects these signals. You can also skip replies, show all signal probabilities, hide the status panel, pause processing, or clear the cache.
 
 ## Reliability and privacy
 
-- Post text and the author's handle are sent to the selected API service (TypeSafe by default) for classification. Your API key is stored in `chrome.storage.local` and sent only as authentication to the selected API service; it is not synced to a browser account. Local storage is not encrypted.
-- The background worker owns the persistent cache and deduplicates requests across tabs. At most three requests run concurrently. Labels track their post ID when the timeline reuses DOM nodes.
+- Post text and the author's handle are sent to the selected API service (TypeSafe by default) for classification. Your API key is stored in `chrome.storage.local` and sent only as authentication to the selected API service; it is not synced to a browser account. Persistent storage is restricted to trusted extension contexts. X-page content scripts receive only sanitized settings and a key-present flag. Local storage is not encrypted.
+- The background worker owns the persistent cache and deduplicates requests by post ID and content fingerprint across tabs. Changed text is classified again, and the cache does not persist raw post text. At most three requests run concurrently. Labels track their post ID when the timeline reuses DOM nodes.
 - Pausing stops queued requests and attempts to abort active ones. Requests already received by the provider may still incur charges.
-- Each attempt has a 20-second timeout. Network errors, HTTP 429, and server errors receive up to three attempts. Fixing the key or pausing and resuming lets failed posts be tried again.
-- Language and threshold changes reuse raw cached probabilities. Version 0.1.1 introduced a new cache format; caches from earlier versions are rebuilt on first use. Version 0.1.2 adds bilingual UI without changing that format.
+- Each attempt has a 20-second timeout. Network errors, HTTP 429, and server errors receive up to three attempts. Changed post text, fixing the key, or pausing and resuming lets failed posts be tried again.
+- Language and threshold changes reuse raw cached probabilities. Cache versions are incremented when the response format or classification criteria change, so judgments made with older questions are rebuilt.
 - There is no analytics or telemetry. Counters are held in the current tab's memory. Cost estimates exclude other tabs and any charges from failed requests.
 
 AI labels can be wrong. They are predictions about text, not established facts about a person or a post. This project is independent and not affiliated with, authorized, or endorsed by X Corp. It is intended for personal browsing assistance. Review the [usage notice](README.md) and [MIT license](LICENSE).
 
 ## Development and tests
 
-Node.js 20+ is required. Browser tests also need Chrome or Chromium; no npm dependencies are needed.
+Node.js 20+ is required. The extension requires Chrome 140+ for restricted local storage access. Browser tests also need Chrome or Chromium; no npm dependencies are needed.
 
 ```bash
 npm test
@@ -67,3 +71,5 @@ Version 0.1.3 adds a prominent data-transfer notice, explicit opt-in and withdra
 Version 0.1.4 moves disclosure, consent, API key configuration, cache clearing and version information to a dedicated Settings page. Open it from the popup or Chrome’s extension options. The compact popup keeps language, pause/resume, threshold and display controls. Changes synchronize between both pages.
 
 Version 0.1.5 adds custom HTTPS API endpoints. TypeSafe remains the default. Custom providers must support the TypeSafe System One request/response format; OpenAI chat APIs are not supported. Saving a different URL clears the old key and cache, pauses processing and requires consent to the new destination. Configure a key issued for that service. Custom hosts are authorized individually.
+
+Version 0.1.8 refines the existing criteria without changing the label categories, classifies collapsed long posts from their full text before expansion, and restricts the API key to trusted extension contexts. Existing users must renew data-transfer consent. Chrome 140 or later is required.

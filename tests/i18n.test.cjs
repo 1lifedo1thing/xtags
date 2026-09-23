@@ -43,7 +43,10 @@ test('both catalogs cover the same keys and localize stored error codes', () => 
 
 test('manifest loads shared translations first and includes native metadata locales', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
-  assert.deepEqual(manifest.content_scripts[0].js, ['service.js', 'i18n.js', 'content.js']);
+  assert.deepEqual(manifest.content_scripts[0].js, ['fulltext.js']);
+  assert.equal(manifest.content_scripts[0].world, 'MAIN');
+  assert.equal(manifest.content_scripts[0].run_at, 'document_start');
+  assert.deepEqual(manifest.content_scripts[1].js, ['service.js', 'i18n.js', 'content.js']);
   assert.equal(manifest.default_locale, 'en');
   const key = manifest.description.match(/^__MSG_(.+)__$/)[1];
   for (const locale of ['en', 'zh_CN']) {

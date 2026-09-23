@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
+  "minimum_chrome_version": "140",
   "name": "Xtags",
-  "version": "0.1.5",
+  "version": "0.1.8",
   "description": "__MSG_extensionDescription__",
   "author": "yishan",
-  "homepage_url": "https://linyishan.com",
+  "homepage_url": "https://manifoldor.github.io/xtags/",
   "permissions": [
     "storage"
   ],
@@ -29,6 +30,12 @@
     }
   },
   "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["fulltext.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": [
         "https://x.com/*",

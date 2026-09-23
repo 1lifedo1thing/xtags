@@ -1,8 +1,8 @@
 # GitHub Pages 发布隐私政策
 
-发布状态（2026-09-20）：**已上线。** Xtags 0.1.5 源码和商城资料已推送至 `manifoldor/xtags` 的 `main`，功能提交 `698e9d6`。GitHub Pages 已通过仓库设置启用，发布来源为 **Deploy from a branch → main → /docs**，强制 HTTPS。
+发布状态（2026-09-23）：GitHub Pages 已启用，发布来源为 **Deploy from a branch → main → /docs**，强制 HTTPS。0.1.8 中英文政策及主页、支持页已在本地更新；推送后需核对线上内容与 `docs/` 及随包 `extension/privacy/` 一致。
 
-[首次部署](https://github.com/manifoldor/xtags/actions/runs/35491604540)已成功。使用不携带登录凭证的 HTTPS 请求验证下列四个页面及样式、图标均返回 200，内容与本地 `docs/` 完全一致。
+[0.1.5 首次部署](https://github.com/manifoldor/xtags/actions/runs/35491604540)已成功。下列地址此前已匿名验证；0.1.8 更新后需重新验证响应、版本日期和具体披露内容。
 
 ## 已发布地址
 
@@ -13,7 +13,7 @@
 | 中文政策 | https://manifoldor.github.io/xtags/privacy.zh-CN.html |
 | Support URL | https://manifoldor.github.io/xtags/support.html |
 
-商城 Privacy policy 字段可填写上方英文政策地址。网站包含独立设置页、自定义 API 接收方、域名授权和凭证切换规则的最新说明。
+商城 Privacy policy 字段可填写上方英文政策地址。0.1.8 页面补充了折叠长文展开前发送全文、数据缓存和 key 访问范围的说明。
 
 ## 后续更新
 

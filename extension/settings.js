@@ -1,10 +1,11 @@
 const $ = (id) => document.getElementById(id);
 const i18n = XtagsI18n.create();
-const CONSENT_VERSION = 1;
+const CONSENT_VERSION = 2;
 const DEFAULTS = {
   apiEndpoint: XtagsService.OFFICIAL_URL,
   consentEndpoint: XtagsService.OFFICIAL_URL,
   apiKey: "",
+  keyRevision: "",
   threshold: 0.8,
   model: "jev-latest",
   enabled: false,
@@ -154,7 +155,7 @@ $("saveEndpoint").addEventListener("click", async () => {
     const previous = state.apiEndpoint;
     if (endpoint !== previous) {
       // Never reuse a credential or consent for a different destination.
-      if (!await save({ apiEndpoint: endpoint, apiKey: "", consentVersion: 0,
+      if (!await save({ apiEndpoint: endpoint, apiKey: "", keyRevision: crypto.randomUUID(), consentVersion: 0,
         consentEndpoint: "", enabled: false, resetToken: crypto.randomUUID() })) return;
       $("apiKey").value = ""; $("consentCheck").checked = false;
       if (previous !== XtagsService.OFFICIAL_URL && XtagsService.originPattern(previous) !== XtagsService.originPattern(endpoint)) {
@@ -192,7 +193,10 @@ window.addEventListener("languagechange", () => {
   if (i18n.preference === "auto") renderLanguage();
 });
 
-$("apiKey").addEventListener("change", () => save({ apiKey: $("apiKey").value.trim() }));
+$("apiKey").addEventListener("change", () => {
+  const apiKey = $("apiKey").value.trim();
+  if (apiKey !== state.apiKey) save({ apiKey, keyRevision: crypto.randomUUID() });
+});
 $("threshold").addEventListener("change", () => {
   const value = Number($("threshold").value);
   const threshold = Number.isFinite(value) && value >= 0 && value <= 1 ? value : 0.8;

@@ -1,14 +1,16 @@
 # 设置页数据上传披露与同意
 
-状态：**已接入 0.1.5。** 设置页使用随扩展打包的中英文隐私政策，离线可读；商城要求的[公开政策 URL](https://manifoldor.github.io/xtags/privacy.html) 已通过 GitHub Pages 发布并验证可匿名访问。
+状态：**已接入 0.1.8 候选版。** 设置页使用随扩展打包的中英文隐私政策，离线可读；商城要求的[公开政策 URL](https://manifoldor.github.io/xtags/privacy.html) 已通过 GitHub Pages 提供，推送新版后须核对线上内容与随包版本一致。
 
-同意版本为 1；后台在排队、实际请求/重试以及接收结果后验证当前配置。同意还绑定完整 API URL；已有官方同意只对官方地址有效，自定义服务须重新同意。旧版本没有同意记录时不会自动迁移为已同意。撤回会把同意版本清零并暂停；key 和缓存保留，可另行清空。
+当前本地待发布版本的同意版本为 2；后台在排队、实际请求/重试以及接收结果后验证当前配置。折叠长推文现在会在展开前上传 X 页面数据中的全文，因此原版本同意不会自动沿用，用户需要重新阅读披露并同意。同意还绑定完整 API URL；已有官方同意只对官方地址有效，自定义服务须重新同意。撤回会把同意版本清零并暂停；key 和缓存保留，可另行清空。
 
 ## 中文（默认官方服务）
 
 ### 启用前请了解
 
 Xtags 会将你浏览页面中提取的帖子正文和作者账号发送给 TypeSafe AI，以生成意图和信号标签。已渲染的帖子可能不在当前视口内，也可能不是公开帖子。需要你的 TypeSafe API key，使用可能产生费用。AI 判断可能有误。
+
+折叠的长推文会在点击展开前，读取 X 页面数据中已有的全文并发送分类。
 
 链接：隐私政策 · TypeSafe 隐私政策 · 获取 API key
 
@@ -21,6 +23,8 @@ Xtags 会将你浏览页面中提取的帖子正文和作者账号发送给 Type
 ### Before you enable Xtags
 
 Xtags sends post text and author handles extracted from pages you browse to TypeSafe AI to generate intent and signal labels. Rendered posts may be outside the current viewport or may not be public. Your TypeSafe API key is required, and API usage may incur charges. AI estimates can be wrong.
+
+For collapsed long posts, Xtags reads the full text already present in X's page data and sends it for classification before you expand the post.
 
 Links: Privacy policy · TypeSafe privacy policy · Get an API key
 

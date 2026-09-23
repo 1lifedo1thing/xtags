@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const i18n = XtagsI18n.create();
-const CONSENT_VERSION = 1;
+const CONSENT_VERSION = 2;
 const DEFAULTS = {
   apiEndpoint: XtagsService.OFFICIAL_URL, consentEndpoint: XtagsService.OFFICIAL_URL,
   apiKey: "", consentVersion: 0, enabled: false, threshold: 0.8,

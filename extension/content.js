@@ -11,10 +11,11 @@
 (function () {
   "use strict";
 
-  // ── 配置（从 chrome.storage 异步加载）─────────────────────────────────────
-  const CONSENT_VERSION = 1;
+  // ── 配置（从后台获取脱敏快照，监听临时存储变化）───────────────────────────
+  const CONSENT_VERSION = 2;
   const DEFAULTS = {
-    apiKey: "",
+    hasKey: false,
+    keyRevision: "",
     model: "jev-latest",
     threshold: 0.8,
     showAll: false,
@@ -28,7 +29,7 @@
     language: "auto",
   };
 
-  // 配置来自本地存储；请求和持久化缓存统一交给后台。
+  // 内容脚本只接收不含 API key 的临时设置；请求和持久化缓存统一交给后台。
   let HAS_KEY = false;
   let MODEL = "jev-latest";
   let RESET_TOKEN = 0;
@@ -42,6 +43,7 @@
 
   const MAX_INFLIGHT = 3;
   const CACHE_LIMIT = 3000;
+  const FULL_TEXT_RETRY_DELAYS = [500, 1500, 3500];
 
   /**
    * 帖子容器。用 article[data-testid="tweet"] 而不是时间线的 cellInnerDiv——
@@ -91,8 +93,11 @@
   // ── 状态 ──────────────────────────────────────────────────────────────────
   // 只缓存原始概率；每次渲染都应用当前阈值。
   const cache = new Map();
+  const cacheText = new Map();
+  const knownLong = new Set();
+  const fullTextRetries = new Map();
   const inflight = new Map();
-  const failed = new Set();
+  const failed = new Map();
   const skipped = new Set();
   let queue = [];
   let active = 0;
@@ -159,6 +164,8 @@
     queue = [];
     inflight.clear();
     failed.clear();
+    for (const retry of fullTextRetries.values()) if (retry.timer !== null) clearTimeout(retry.timer);
+    fullTextRetries.clear();
   }
 
   function pump() {
@@ -169,13 +176,25 @@
       ask(job)
         .then((r) => {
           if (job.generation !== generation || !CONSENTED || !ENABLED || !HAS_KEY) return;
+          const currentElement = [...document.querySelectorAll(POST_SELECTOR)].find((el) =>
+            findTimeAnchor(el)?.getAttribute("href")?.match(/status\/(\d+)/)?.[1] === job.id);
+          const currentPost = currentElement ? extract(currentElement) : null;
+          if (currentPost && (currentPost.incomplete || currentPost.text !== job.state.post.text)) {
+            scheduleScan();
+            return;
+          }
           const verdict = compose(r.answers);
           stats.asked++;
           stats.tokens += r.usage?.input_tokens ?? 0;
           if (verdict.signals.length > 0) stats.labeled++;
           cache.delete(job.id);
           cache.set(job.id, r.answers);
-          while (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value);
+          cacheText.set(job.id, job.state.post.text);
+          while (cache.size > CACHE_LIMIT) {
+            const oldest = cache.keys().next().value;
+            cache.delete(oldest);
+            cacheText.delete(oldest);
+          }
           if (r.warning) stats.lastError = { code: r.warningCode, detail: r.warning };
           paint(job.id);
         })
@@ -183,8 +202,9 @@
           if (job.generation !== generation || e.cancelled) return;
           stats.failed++;
           stats.lastError = { code: e.code, detail: e.message };
-          failed.add(job.id);
+          failed.set(job.id, job.state.post.text);
           console.warn("[xtags] 请求失败:", e.message);
+          scheduleScan(); // The post may have gained a different body while this request was running.
         })
         .finally(() => {
           active--;
@@ -222,12 +242,42 @@
     const textEl = el.querySelector('[data-testid="tweetText"]');
     if (!textEl) return null;
 
-    const text = textEl.innerText.trim();
+    let text = textEl.innerText.trim();
     if (!text) return null;
 
     const statusLink = findTimeAnchor(el);
     const id = statusLink?.getAttribute("href")?.match(/status\/(\d+)/)?.[1];
     if (!id) return null;
+
+    // X often keeps the entire Note Tweet in page data while tweetText contains
+    // only the preview. Never send that preview as if it were the whole post.
+    let incomplete = false;
+    const folded = [...el.querySelectorAll('[data-testid="tweet-text-show-more-link"]')]
+      .some((button) => !button.closest('[role="link"]'));
+    if (folded || knownLong.has(id)) {
+      const token = ++fullTextToken;
+      let result = null;
+      const receive = (event) => {
+        try {
+          const data = JSON.parse(event.detail);
+          if (data.token === token && data.id === id) result = data.text;
+        } catch { /* Ignore invalid page data. */ }
+      };
+      el.addEventListener("xtags:fulltext-response", receive);
+      try {
+        el.dispatchEvent(new CustomEvent("xtags:fulltext-request", {
+          detail: JSON.stringify({ id, token }),
+        }));
+      } finally {
+        el.removeEventListener("xtags:fulltext-response", receive);
+      }
+      if (typeof result === "string" && result.trim()) {
+        text = result;
+        knownLong.delete(id);
+        knownLong.add(id);
+        while (knownLong.size > CACHE_LIMIT) knownLong.delete(knownLong.values().next().value);
+      } else incomplete = folded;
+    }
 
     let author = null;
     for (const link of el.querySelectorAll('a[href^="/"]')) {
@@ -238,8 +288,10 @@
       }
     }
 
-    return { id, text, author };
+    return { id, text, author, incomplete };
   }
+
+  let fullTextToken = 0;
 
   // ── 贴标签 ────────────────────────────────────────────────────────────────
   const BADGE_ATTR = "data-xtags-badge";
@@ -284,10 +336,53 @@
     }
     if (SHOW_ALL) {
       for (const { key, p } of entry.allSignals) {
+        if (entry.signals.some((signal) => signal.key === key)) continue;
         wrap.appendChild(chip(`${i18n.t(key)} ${p.toFixed(2)}`, "calm"));
       }
     }
     return wrap;
+  }
+
+  function showIncomplete(el, id) {
+    scheduleFullTextRetry(id);
+    const existing = el.querySelector(`[${BADGE_ATTR}]`);
+    if (existing?.getAttribute("data-xtags-incomplete") === "true") return;
+    existing?.remove();
+    const anchor = findTimeAnchor(el);
+    if (!anchor?.parentElement) return;
+    const badge = document.createElement("span");
+    badge.setAttribute(BADGE_ATTR, id);
+    badge.setAttribute("data-xtags-incomplete", "true");
+    badge.style.cssText = "display:inline-flex;margin-left:8px;font:500 11px/1.3 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;";
+    badge.appendChild(chip(i18n.t("fullTextUnavailable"), "calm"));
+    anchor.parentElement.insertBefore(badge, anchor.nextSibling);
+  }
+
+  function clearFullTextRetry(id) {
+    const retry = fullTextRetries.get(id);
+    if (retry?.timer !== null && retry?.timer !== undefined) clearTimeout(retry.timer);
+    fullTextRetries.delete(id);
+  }
+
+  function scheduleFullTextRetry(id) {
+    let retry = fullTextRetries.get(id);
+    if (!retry) {
+      retry = { attempts: 0, timer: null };
+      fullTextRetries.set(id, retry);
+    }
+    if (retry.timer !== null || retry.attempts >= FULL_TEXT_RETRY_DELAYS.length) return;
+    const delay = FULL_TEXT_RETRY_DELAYS[retry.attempts++];
+    retry.timer = setTimeout(() => {
+      retry.timer = null;
+      const stillPresent = [...document.querySelectorAll(POST_SELECTOR)].some((article) =>
+        findTimeAnchor(article)?.getAttribute("href")?.match(/status\/(\d+)/)?.[1] === id);
+      if (!stillPresent) {
+        fullTextRetries.delete(id);
+        return;
+      }
+      scan();
+    }, delay);
+    while (fullTextRetries.size > CACHE_LIMIT) clearFullTextRetry(fullTextRetries.keys().next().value);
   }
 
   function paint(id) {
@@ -296,7 +391,7 @@
     const entry = compose(answers);
     for (const el of document.querySelectorAll(POST_SELECTOR)) {
       const post = extract(el);
-      if (!post || post.id !== id || (SKIP_REPLIES && isReply(el))) continue;
+      if (!post || post.id !== id || post.incomplete || cacheText.get(id) !== post.text || (SKIP_REPLIES && isReply(el))) continue;
 
       const existing = el.querySelector(`[${BADGE_ATTR}]`);
       if (existing) existing.remove();
@@ -316,6 +411,7 @@
     if (!CONSENTED || !ENABLED || !HAS_KEY) return;
 
     const containers = document.querySelectorAll(POST_SELECTOR);
+    const seenPostIds = new Set();
     lastContainerCount = containers.length;
 
     for (const el of containers) {
@@ -324,14 +420,27 @@
       const skip = SKIP_REPLIES && isReply(el);
       if (existing && (!post || skip || existing.getAttribute(BADGE_ATTR) !== post.id)) existing.remove();
       if (!post) continue;
+      seenPostIds.add(post.id);
       if (skip) {
         skipped.add(post.id);
         continue;
+      }
+      if (post.incomplete) {
+        showIncomplete(el, post.id);
+        continue;
+      }
+      clearFullTextRetry(post.id);
+      if (existing?.getAttribute("data-xtags-incomplete") === "true") existing.remove();
+      if (cache.has(post.id) && cacheText.get(post.id) !== post.text) {
+        cache.delete(post.id);
+        cacheText.delete(post.id);
+        el.querySelector(`[${BADGE_ATTR}]`)?.remove();
       }
       if (cache.has(post.id)) {
         if (!el.querySelector(`[${BADGE_ATTR}]`)) paint(post.id);
         continue;
       }
+      if (failed.has(post.id) && failed.get(post.id) !== post.text) failed.delete(post.id);
       if (inflight.has(post.id) || failed.has(post.id)) continue;
 
       const job = {
@@ -343,6 +452,7 @@
       stats.seen++;
       queue.push(job);
     }
+    for (const id of fullTextRetries.keys()) if (!seenPostIds.has(id)) clearFullTextRetry(id);
     stats.skipped = skipped.size;
 
     refreshUi();
@@ -438,9 +548,9 @@
   }
 
   function applyChanges(changes) {
-    const lifecycle = ["apiKey", "enabled", "consentVersion", "apiEndpoint", "consentEndpoint", "model", "resetToken"].some((k) => changes[k]);
+    const lifecycle = ["hasKey", "keyRevision", "enabled", "consentVersion", "apiEndpoint", "consentEndpoint", "model", "resetToken"].some((k) => changes[k]);
     if (lifecycle) invalidateRequests();
-    if (changes.apiKey) HAS_KEY = !!changes.apiKey.newValue;
+    if (changes.hasKey) HAS_KEY = changes.hasKey.newValue === true;
     if (changes.enabled) ENABLED = changes.enabled.newValue === true;
     for (const key of Object.keys(serviceConfig)) if (changes[key]) serviceConfig[key] = changes[key].newValue ?? DEFAULTS[key];
     CONSENTED = XtagsService.hasConsent(serviceConfig, CONSENT_VERSION);
@@ -455,7 +565,10 @@
     }
     if (changes.showHud) SHOW_HUD = changes.showHud.newValue !== false;
     if (changes.threshold) THRESHOLD = threshold(changes.threshold.newValue);
-    if (changes.model || changes.resetToken || changes.apiEndpoint) cache.clear();
+    if (changes.model || changes.resetToken || changes.apiEndpoint) {
+      cache.clear();
+      cacheText.clear();
+    }
     if (changes.resetToken) {
       skipped.clear();
       for (const key of Object.keys(stats)) stats[key] = key === "lastError" ? "" : 0;
@@ -472,9 +585,13 @@
     }
   }
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== "local") return;
-    const settings = Object.fromEntries(Object.entries(changes).filter(([key]) => key in DEFAULTS));
+  chrome.storage.session.onChanged.addListener((changes) => {
+    if (!changes.publicConfig) return;
+    const before = changes.publicConfig.oldValue ?? {};
+    const after = changes.publicConfig.newValue ?? {};
+    const settings = Object.fromEntries(Object.keys(DEFAULTS)
+      .filter((key) => before[key] !== after[key])
+      .map((key) => [key, { oldValue: before[key], newValue: after[key] ?? DEFAULTS[key] }]));
     if (!Object.keys(settings).length) return;
     if (!booted) Object.assign(earlyChanges, settings);
     else applyChanges(settings);
@@ -503,11 +620,21 @@
   }
 
   // ── 启动 ──────────────────────────────────────────────────────────────────
+  function loadPublicConfig() {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: "xtags-config" }, (res) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (!res?.ok || !res.data) return reject(new Error(res?.error || "settings unavailable"));
+        resolve(res.data);
+      });
+    });
+  }
+
   async function boot() {
-    const cfg = await chrome.storage.local.get(DEFAULTS);
+    const cfg = { ...DEFAULTS, ...await loadPublicConfig() };
     for (const [key, change] of Object.entries(earlyChanges)) cfg[key] = change.newValue;
     i18n.setPreference(cfg.language);
-    HAS_KEY = !!cfg.apiKey;
+    HAS_KEY = cfg.hasKey === true;
     MODEL = cfg.model || "jev-latest";
     RESET_TOKEN = cfg.resetToken ?? 0;
     THRESHOLD = threshold(cfg.threshold);
