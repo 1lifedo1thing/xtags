@@ -5,6 +5,7 @@ const DEFAULTS = {
   apiEndpoint: XtagsService.OFFICIAL_URL, consentEndpoint: XtagsService.OFFICIAL_URL,
   apiKey: "", consentVersion: 0, enabled: false, threshold: 0.8,
   keyRevision: "", resetToken: 0, retryToken: 0,
+  aiMode: "collapse",
   skipReplies: true, showAll: false, showHud: true, language: "auto",
 };
 const CHECKBOXES = ["enabled", "skipReplies", "showAll", "showHud"];
@@ -25,6 +26,7 @@ function renderLanguage(restore = false) {
   $("enabled").disabled = !configured;
   for (const id of CHECKBOXES) $(id).checked = id === "enabled" ? configured && state.enabled === true : !!state[id];
   if (restore === true || document.activeElement !== $("threshold")) $("threshold").value = state.threshold;
+  $("aiMode").value = ["collapse", "tint", "label"].includes(state.aiMode) ? state.aiMode : "collapse";
   $("setupNotice").hidden = !loaded || configured;
   $("setupNotice").textContent = i18n.t(accepted ? "setupKey" : "setupConsent");
   $("status").textContent = statusMessage ? i18n.t(statusMessage) : "";
@@ -85,6 +87,7 @@ $("threshold").addEventListener("change", () => {
   const value = Number($("threshold").value);
   save({ threshold: Number.isFinite(value) && value >= 0 && value <= 1 ? value : 0.8 });
 });
+$("aiMode").addEventListener("change", () => save({ aiMode: $("aiMode").value }));
 for (const id of CHECKBOXES) $(id).addEventListener("change", () => {
   if (id === "enabled" && (!XtagsService.hasConsent(state, CONSENT_VERSION) || !state.apiKey)) {
     renderLanguage(); return;

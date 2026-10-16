@@ -1,36 +1,32 @@
-# 图片清单与来源
+# 0.2.1 图片清单与来源
 
-**0.1.9（2026-09-27）：** 弹窗、设置页和宣传图已用当前本地界面重新生成。用户提供的原始实际标签图及其 1280 × 800 商城画布保持原貌；图中概率是当时实际判断结果。
+2026-10-16 · 白底、黑字、珊瑚红。每种语言使用下面五张，全球通用备用截图使用相同英文五张，不混用旧的 0.1.9 popup／settings 图。
 
-| 文件 | 尺寸 | 使用位置 | 来源 |
+| 顺序 | 文件（locale = en / zh-CN） | 尺寸 | 内容 |
 | --- | --- | --- | --- |
-| assets/screenshot-labels-zh-CN.png / screenshot-labels-en.png | 1280 × 800 | 建议作为商城第一张截图 | 用户提供的实际标签截图，等比嵌入中英文说明画布，保留原有标签、概率和箭头 |
-| assets/screenshot-labels-original.png | 2512 × 1404 | README 原图；不直接上传商城 | 用户于 2026-09-20 提供并授权公开使用的本人截图 |
-| assets/icon-128.png | 128 × 128 | 扩展图标 | 复用 extension/icons/on/icon128.png |
-| assets/promo-small.png | 440 × 280 | 必需的小宣传图 | 本项目图标、品牌名与 CSS 图形 |
-| assets/promo-marquee.png | 1400 × 560 | 可选的大宣传图 | 同一品牌构图 |
-| assets/screenshot-settings-en.png | 1280 × 800 | 英文设置截图 | 实际设置页 HTML、JS、翻译代码在本地 Chrome 中渲染 |
-| assets/screenshot-settings-zh-CN.png | 1280 × 800 | 简体中文设置截图 | 同上，中文界面 |
-| assets/screenshot-popup-en.png / screenshot-popup-zh-CN.png | 1280 × 800 | 中英文快捷操作截图 | 当前 popup 代码的本地渲染 |
+| 1 | assets/screenshot-ai-feed-{locale}.png | 1280×800 | AI 行内提示、自动折叠和普通帖子并存 |
+| 2 | assets/screenshot-ai-compare-{locale}.png | 1280×800 | 同组帖子未过滤／折叠后对照 |
+| 3 | assets/screenshot-ai-expand-{locale}.png | 1280×800 | 同一帖子的折叠／展开及微红底色 |
+| 4 | assets/screenshot-ai-long-{locale}.png | 1280×800 | 仅标签模式下，长推文仍有“显示更多”时已显示判断 |
+| 5 | assets/screenshot-ai-controls-{locale}.png | 1280×800 | 实际 popup 与设置页 AI 阈值／模式局部 |
+| — | assets/promo-small.png | 440×280 | 品牌与 AI 过滤功能概念 |
+| — | assets/promo-marquee.png | 1400×560 | 品牌、AI 提示与折叠概念 |
+| — | assets/icon-128.png | 128×128 | 复用实际扩展图标 |
 
-设置截图使用空 API key、默认设置和本地模拟的 Chrome storage/runtime 接口，设置页展示默认未同意状态和真实披露区域，popup 展示设置入口；没有改写产品控件或伪造分类结果。popup 图外侧说明文字是宣传排版；设置页图直接展示页面。图片不代表完成了真实 X / TypeSafe 联调。当前设置和 popup 图片按 0.1.9 界面代码重新生成；以后修改披露界面也应重生成截图。
+## 来源与真实性
 
-**实际标签截图已补充。** 使用 `screenshot-labels-zh-CN.png` 作为中文商城第一张截图，英文商城可使用 `screenshot-labels-en.png`（图内明确说明界面为简体中文）。原截图中的“挑拨 0.68”和红色箭头均由用户提供，没有重新生成或修改帖子、标签、概率；它记录的是提示词调整前的一次真实输出，新版对同一帖子的分数可能不同。原图用于中英文 README，商城图片仅将原图等比嵌入 1280 × 800 的 HTML 画布。此截图展示实际效果，不代表已完成全部端到端回归。每种语言最多上传五张截图；后续依次使用快捷操作、设置页及可选自定义服务示例。
+功能截图使用项目自写示例文字和虚构示例账号，通过**当前 extension/content.js、fulltext.js、service.js、i18n.js** 渲染标签、按钮和折叠效果。全文例子使用模拟的 X React 帖子数据，由真实 fulltext.js 读取；显示“仅标签”模式是为了同时看到尚未展开的摘要和判断。
 
-宣传图不按 locale 单独提供，因此仅使用品牌名。没有使用 X / Chrome 商标来暗示官方关联，也没有使用外部图库。
+API 返回为固定模拟分数；不是实测检测结果，不能用于证明示例文字的作者来源或模型准确率。每张功能截图底部都明确标注“演示帖子与模拟分数／非真实检测结果”。处理前后采用同一组自写帖子，不代表真实 X 联调或性能测量。截图中的模型分数不等于识别准确率。
 
-## 重新生成
+[整套本地预览](artwork/index.html)。
 
-在项目根目录运行：
+Popup 与设置截图使用实际 HTML、JS 和翻译，模拟 Chrome storage/runtime，key 为空、同意未授予；设置页局部仅滚动到真实 AI 控件，没有重新设计产品控件或隐藏数据收集事实。推广画布的注解、边框、标题属于图外宣传排版。小／大宣传图使用代码绘制的简化演示卡片，并标记 Demo UI / Mocked score。没有外部图库或需要授权的第三方头像。
 
-```sh
-python3 scripts/store-artwork.py
-```
+用户 2026-09-20 提供并授权的本人实际意图截图 screenshot-labels-original.png 及旧 screenshot-labels-* 保留为历史辅助素材，不进入本次五张 AI 截图。原图分数来自当时的真实判断，不替换或伪造为新版 AI 识别结果。
 
-需要本机 Chrome；其他系统可通过 `CHROME_BIN` 指定 Chromium 可执行文件。脚本使用临时独立浏览器配置，不读取用户浏览器账户或扩展数据。HTML 源文件写入 `store/artwork/`，PNG 写入 `store/assets/`。图片生成后仍应目视检查，尤其在不同系统字体下。
+## 重建
 
-依据：[Chrome Web Store 图片规范](https://developer.chrome.com/docs/webstore/images)。
+`python3 scripts/store-artwork.py`。需要本机 Chrome；可用 CHROME_BIN 指定路径。使用独立临时浏览器配置，不读取用户账户，无真实 API 请求。HTML 写入 store/artwork/，PNG 写入 store/assets/；使用本机系统字体，无远程字体。运行后检查尺寸、中文／英文排版、AI 行内顺序、折叠与展开差异及控件可读性。
 
-`assets/screenshot-service-custom-zh-CN.png` 是自定义服务输入示例，URL 为保留示例域名 api.example.com 的未保存草稿；用于展示操作入口，不是可用服务推荐或真实联调结果。
-
-实际标签截图的画布文件为 `store/artwork/screenshot-labels-zh-CN.html` 和 `screenshot-labels-en.html`，通过 `python3 scripts/store-label-screenshots.py` 重新渲染。原图不由设置页图片生成脚本覆盖。
+官方依据：[Chrome Web Store 图片规范](https://developer.chrome.com/docs/webstore/images)。

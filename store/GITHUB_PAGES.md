@@ -1,3 +1,13 @@
+# 0.2.1 部署状态（2026-10-16）
+
+已按本次明确授权，仅发布五个 `docs/` 页面文件：index.html、privacy.html、privacy.zh-CN.html、support.html、styles.css。提交 `58fd3413c814fc23731b593d89c479ef6d049053` 已推送到 main；未推送扩展代码、商店素材、README 或其他本地改动。
+
+[本次 Pages 部署](https://github.com/manifoldor/xtags/actions/runs/38843654591)成功。2026-10-16 匿名逐页请求均返回 HTTP 200，五个文件与本地 docs/ 逐字节一致；随包政策也与本地源文件一致。
+
+以下旧版本记录保留作历史参考。后续 GitHub 推送仍需当前任务明确授权。
+
+---
+
 # GitHub Pages 发布隐私政策
 
 **0.1.9（2026-09-27）：已发布并验证。** 提交 `0180e81` 已推送到 `main`。匿名读取英文政策、中文政策和支持页均返回 HTTP 200，内容与本地 `docs/` 逐字节一致；随包的 `extension/privacy/` 页面也与 `docs/` 一致。

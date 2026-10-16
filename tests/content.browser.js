@@ -7,9 +7,9 @@
     rage_bait: { noul: .7 }, synthetic: { noul: .1 }, undisclosed_ad: { noul: .1 },
   }, usage: { input_tokens: 100 } });
   const post = (id, reply = false) => `<article data-testid="tweet"><div><a href="/alice">Alice</a><a href="/alice/status/${id}"><time>now</time></a></div>${reply ? '<div>Replying to @bob</div>' : ''}<div data-testid="tweetText">Post ${id}</div></article>`;
-  async function make({ data = {}, html = '', beforeRead, systemLanguage = 'zh-CN', fullText = {} } = {}) {
+  async function make({ data = {}, html = '', beforeRead, systemLanguage = 'zh-CN', fullText = {}, pathname = '/home' } = {}) {
     const frame = document.createElement('iframe'); frames.push(frame); document.body.append(frame);
-    const w = frame.contentWindow; w.document.body.innerHTML = html;
+    const w = frame.contentWindow; w.document.body.innerHTML = html; w.testPathname = pathname;
     for (const [id, text] of Object.entries(fullText)) {
       const article = [...w.document.querySelectorAll('article[data-testid="tweet"]')]
         .find(el => el.querySelector(`a[href$="/status/${id}"]`));
@@ -24,6 +24,7 @@
       apiEndpoint: saved.apiEndpoint ?? 'https://api.typesafe.ai/v1/systemone',
       consentEndpoint: saved.consentEndpoint ?? 'https://api.typesafe.ai/v1/systemone',
       model: saved.model ?? 'jev-latest', resetToken: saved.resetToken ?? 0, retryToken: saved.retryToken ?? 0,
+      aiThreshold: saved.aiThreshold ?? .85, aiMode: saved.aiMode ?? "collapse",
       threshold: saved.threshold ?? .8, showAll: !!saved.showAll, skipReplies: saved.skipReplies !== false,
       showHud: saved.showHud !== false, language: saved.language ?? 'auto',
     });
@@ -173,10 +174,10 @@
     assert(reloaded.badge('1').textContent.includes('诱导愤怒'), 'reload used stale derived signals');
   });
   await test('zero threshold works on startup and live changes', async () => {
-    const e = await make({ data: { threshold: 0 }, html: post('1') }); await e.reply(0);
+    const e = await make({ data: { threshold: 0, aiThreshold: 0, aiMode: "label" }, html: post('1') }); await e.reply(0);
     assert(e.badge('1').children.length === 4, 'zero ignored on startup');
-    await e.set({ threshold: 1 }); assert(e.badge('1').children.length === 1, 'threshold 1 ignored');
-    await e.set({ threshold: 0 }); assert(e.badge('1').children.length === 4, 'zero ignored on update');
+    await e.set({ threshold: 1, aiThreshold: 1 }); assert(e.badge('1').children.length === 1, 'threshold 1 ignored');
+    await e.set({ threshold: 0, aiThreshold: 0 }); assert(e.badge('1').children.length === 4, 'zero ignored on update');
   });
   await test('corrected API key retries previously failed posts and clears inflight', async () => {
     const e = await make({ html: post('1') }); e.calls[0].cb({ ok: false, error: '401' }); await flush();
@@ -280,6 +281,7 @@
     w.eval(fixtures[panel + 'Code'].replace('load();', 'globalThis.popupReady = load();'));
     await w.popupReady; await flush();
     return { w, store, timers, set, permissionRequests, removedPermissions, get opened() { return opened; }, failWrites(value) { fail = value; },
+      async settle() { await Promise.all(pendingWrites.splice(0)); await flush(); },
       async setHealth(value) { for (const fn of listeners) fn({serviceHealth: {newValue: value}}, 'session'); await flush(); },
       async choose(value) {
         const el = w.document.getElementById('language'); el.value = value; el.dispatchEvent(new w.Event('change'));
@@ -645,6 +647,134 @@
       assert(doc.body.scrollHeight<=600, 'popup exceeds Chrome height');
       assert(!doc.getElementById('retryFailed').hidden && !doc.getElementById('openSettings').hidden, 'recovery/settings hidden');
     }
+  });
+
+  const aiResponse = (probability = .92) => {
+    const result = response(); result.answers.synthetic.noul = probability; return result;
+  };
+  const richPost = (id) => `<article data-testid="tweet" style="background-color:rgb(240, 240, 240)">
+    <div>Reposted</div><div style="display:flex"><div data-avatar>Avatar</div><div>
+      <div data-header><div data-testid="User-Name"><a href="/alice">Alice</a><a href="/alice/status/${id}"><time>now</time></a></div><button>Menu</button></div>
+      <div data-testid="tweetText">First line<br>Second line <span>with detail</span></div>
+      <div data-testid="tweetPhoto"><img alt="fixture" width="80" height="40"><video></video></div>
+      <div role="link"><div data-testid="tweetText">Quoted text</div><a href="/bob/status/777"><time>yesterday</time></a></div>
+      <div role="group"><button>Reply</button></div>
+    </div></div></article>`;
+  const collapsed = (e) => !!e.w.document.querySelector('[data-xtags-ai-collapsed]');
+  const aiButton = (e) => e.w.document.querySelector('[data-xtags-ai-control] button');
+  await test('AI folds only after a result, preserving the header and hiding body, media, quote and actions', async () => {
+    const e = await make({html:richPost('1')});
+    const doc=e.w.document, article=doc.querySelector('article');
+    assert(!collapsed(e) && doc.querySelector('[data-testid="tweetText"]').getClientRects().length, 'folded before classification');
+    let paused=0; doc.querySelector('video').pause=()=>{paused++;};
+    await e.reply(0, aiResponse());
+    assert(collapsed(e) && aiButton(e).getAttribute('aria-expanded')==='false', 'AI result not folded');
+    for (const node of doc.querySelectorAll('[data-testid="tweetText"], [data-testid="tweetPhoto"], [role="group"], [role="link"]')) {
+      assert(!node.getClientRects().length,'body branch still visible');
+    }
+    assert(doc.querySelector('[data-header]').getClientRects().length && doc.querySelector('[data-avatar]').getClientRects().length,'header/avatar hidden');
+    assert(doc.querySelector('[data-xtags-ai-control]').textContent.includes('0.92') && e.badge('1').textContent.includes('告知'),'probability/intent missing');
+    assert(!e.badge('1').textContent.includes('疑似 AI'),'duplicated AI label');
+    const control=doc.querySelector('[data-xtags-ai-control]');
+    assert(control.tagName==='SPAN' && control.previousElementSibling===e.badge('1') && control.parentElement===e.badge('1').parentElement,'AI control is not inline after the labels');
+    const buttonStyle=e.w.getComputedStyle(aiButton(e));
+    assert(e.w.getComputedStyle(control).display==='inline-flex' && buttonStyle.borderTopWidth==='0px' && buttonStyle.textDecorationLine.includes('underline'),'AI button is not borderless and underlined');
+    assert(paused===1,'media not paused');
+    for(let i=0;i<5;i++) e.a.scan(); await flush();
+    assert(e.calls.length===1 && e.timers.size===0,'folding changed extracted text or triggered feedback scans');
+    let bubbled=0; article.addEventListener('click',()=>bubbled++);
+    const button=aiButton(e); button.focus(); button.click(); await flush();
+    assert(!collapsed(e) && aiButton(e)===button && doc.activeElement===button,'expansion lost focus or remained collapsed');
+    assert(button.textContent.includes('收起') && bubbled===0,'expand navigated post or no collapse control');
+    assert(doc.querySelector('[data-testid="tweetText"]').getClientRects().length && article.hasAttribute('data-xtags-ai-tint'),'expanded text/tint missing');
+    button.click(); await flush(); assert(collapsed(e),'manual collapse failed');
+  });
+  await test('manual AI expansion survives remounts and applies to duplicate posts without another request', async () => {
+    const e=await make({html:post('1')+post('1')}); await e.reply(0,aiResponse());
+    aiButton(e).click(); await flush(); assert(!collapsed(e),'duplicate post remained collapsed');
+    e.w.document.querySelectorAll('article').forEach(node=>node.remove()); await flush(); await e.tick();
+    e.w.document.body.insertAdjacentHTML('beforeend',post('1')); await flush(); await e.tick();
+    assert(!collapsed(e) && aiButton(e).textContent.includes('收起') && e.calls.length===1,'manual expansion not remembered');
+  });
+  await test('AI probability and modes are independent of the other signal threshold and reuse cached results', async () => {
+    const e=await make({html:post('1')}); await e.reply(0,aiResponse());
+    await e.set({threshold:1}); assert(collapsed(e),'other signal threshold changed AI');
+    await e.set({aiMode:'tint'}); assert(!collapsed(e) && !aiButton(e) && e.w.document.querySelector('[data-xtags-ai-tint]'),'tint mode failed');
+    assert(e.badge('1').textContent.includes('疑似 AI 0.92'),'independent AI label missing');
+    await e.set({aiMode:'label'}); assert(!e.w.document.querySelector('[data-xtags-ai-tint]') && e.badge('1').textContent.includes('疑似 AI'),'label mode failed');
+    await e.set({aiMode:'collapse',aiThreshold:.93}); assert(!collapsed(e) && !e.badge('1').textContent.includes('疑似 AI'),'AI threshold not applied');
+    await e.set({aiThreshold:.92}); assert(collapsed(e),'inclusive threshold boundary failed');
+    await e.set({aiThreshold:0}); assert(collapsed(e),'zero AI threshold ignored');
+    await e.set({aiThreshold:1}); assert(!collapsed(e),'threshold 1 ignored');
+    assert(e.calls.length===1 && e.timers.size===0,'display setting change caused API calls or feedback loop');
+  });
+  await test('detail routes stay expanded across same-document navigation without a new request', async () => {
+    const e=await make({html:post('1'),pathname:'/alice/status/1'}); await e.reply(0,aiResponse());
+    assert(!collapsed(e) && !aiButton(e) && e.w.document.querySelector('[data-xtags-ai-tint]'),'detail page collapsed');
+    e.w.testPathname='/home'; e.w.dispatchEvent(new e.w.PopStateEvent('popstate')); await flush();
+    assert(collapsed(e),'back to list did not fold');
+    e.w.testPathname='/alice/status/1/photo/1';
+    if(e.w.navigation) e.w.navigation.dispatchEvent(new e.w.Event('currententrychange'));
+    else e.w.dispatchEvent(new e.w.PopStateEvent('popstate'));
+    await flush(); assert(!collapsed(e) && e.calls.length===1,'SPA detail navigation kept collapse or requested again');
+  });
+  await test('recycled and edited folded posts restore their body before another judgment', async () => {
+    const e=await make({html:richPost('1')}); await e.reply(0,aiResponse());
+    const doc=e.w.document; doc.querySelector('[data-testid="tweetText"]').innerHTML='Changed<br>body';
+    await flush(); await e.tick();
+    assert(!collapsed(e) && !doc.querySelector('[data-xtags-ai-hidden]'),'edited body stayed folded');
+    assert(e.calls.length===2 && e.calls[1].msg.state.post.text==='Changed\nbody','edited text extracted incorrectly');
+    await e.reply(1,aiResponse()); assert(collapsed(e),'new body not foldable');
+    doc.querySelector('a[href="/alice/status/1"]').setAttribute('href','/alice/status/2'); await flush(); await e.tick();
+    e.calls[2].cb({ok:false,code:'errorAuth'}); await flush();
+    assert(!collapsed(e) && !doc.querySelector('[data-xtags-ai-tint]') && !e.badge('1'),'recycled node kept old AI treatment');
+  });
+  await test('pausing, withdrawal, reset, key removal and skipped replies restore all folded DOM', async () => {
+    for(const change of [{enabled:false},{consentVersion:0},{resetToken:'new'},{apiKey:''},{skipReplies:true}]) {
+      const e=await make({html:post('1',true),data:{skipReplies:false}}); await e.reply(0,aiResponse());
+      assert(collapsed(e),'setup not folded'); await e.set(change);
+      assert(!e.w.document.querySelector('[data-xtags-ai-hidden], [data-xtags-ai-control], [data-xtags-ai-tint]'),'stale presentation after '+JSON.stringify(change));
+      assert(e.w.document.querySelector('[data-testid="tweetText"]').getClientRects().length,'body not restored');
+    }
+  });
+  await test('folded long posts still use their full text and expanding does not classify the preview', async () => {
+    const html=post('1').replace('</article>','<button data-testid="tweet-text-show-more-link">Show more</button></article>');
+    const e=await make({html,fullText:{'1':'Post 1\n\nThe complete AI-written article.'}});
+    await e.reply(0,aiResponse()); e.a.scan(); await flush();
+    assert(collapsed(e) && e.calls[0].msg.state.post.text.includes('complete'),'full text not classified');
+    aiButton(e).click(); await flush(); e.a.scan(); await flush();
+    assert(e.calls.length===1,'expanded AI post classified the preview');
+  });
+  await test('fold controls handle late DOM media, translation, theme and restoration of original background', async () => {
+    const e=await make({html:richPost('1')}); await e.reply(0,aiResponse()); const doc=e.w.document;
+    const added=doc.createElement('div'); added.textContent='Late media'; doc.querySelector('[role="group"]').after(added);
+    await flush(); await e.tick(); assert(!added.getClientRects().length,'late media escaped fold');
+    await e.set({language:'en'}); assert(aiButton(e).textContent==='Expand post','fold controls not translated');
+    doc.body.style.backgroundColor='black'; await flush();
+    assert(doc.querySelector('article').getAttribute('data-xtags-ai-theme')==='dark','dark theme not applied');
+    await e.set({aiMode:'label'});
+    assert(e.w.getComputedStyle(doc.querySelector('article')).backgroundColor==='rgb(240, 240, 240)' && added.getClientRects().length,'original style or late media lost');
+    assert(e.calls.length===1,'theme/language caused another API call');
+  });
+  await test('AI settings save, synchronize, reopen and recover from failed writes', async () => {
+    const page=await make({html:post('1')}); await page.reply(0,aiResponse());
+    const quick=await makePanel({panel:'popup',width:360,onSaved:values=>page.set(values)});
+    const settings=await makePanel({onSaved:values=>quick.set(values)});
+    const doc=settings.w.document;
+    assert(doc.getElementById('aiThreshold').value==='0.85' && doc.getElementById('aiMode').value==='collapse','AI defaults missing');
+    doc.getElementById('aiMode').value='label'; doc.getElementById('aiMode').dispatchEvent(new settings.w.Event('change')); await settings.settle();
+    assert(!collapsed(page) && quick.w.document.getElementById('aiMode').value==='label','mode not synchronized');
+    doc.getElementById('aiThreshold').value='.95'; doc.getElementById('aiThreshold').dispatchEvent(new settings.w.Event('change')); await settings.settle();
+    assert(settings.store.aiThreshold===.95 && !page.badge('1').textContent.includes('疑似 AI'),'AI threshold not saved');
+    const reopened=await makePanel({store:settings.store}); assert(reopened.w.document.getElementById('aiMode').value==='label' && reopened.w.document.getElementById('aiThreshold').value==='0.95','AI settings not restored');
+    settings.failWrites(true);
+    for(const [id,value,expected] of [['aiMode','collapse','label'],['aiThreshold','.2','0.95']]) {
+      doc.getElementById(id).value=value; doc.getElementById(id).dispatchEvent(new settings.w.Event('change')); await settings.settle();
+      assert(doc.getElementById(id).value===expected,'failed AI setting retained draft');
+    }
+    quick.failWrites(true); const mode=quick.w.document.getElementById('aiMode'); mode.value='collapse'; mode.dispatchEvent(new quick.w.Event('change')); await quick.settle();
+    assert(mode.value==='label','popup AI mode failure not restored');
+    assert(page.calls.length===1,'AI preferences repeated inference');
   });
 
   document.getElementById('results').textContent = JSON.stringify(results, null, 2);

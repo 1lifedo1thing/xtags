@@ -2,11 +2,20 @@
 
 English | [简体中文](README.md)
 
-See what each post on your X timeline wants you to do. By default, Xtags uses [Jev](https://docs.typesafe.ai/), a TypeSafe model that returns structured judgments and probabilities rather than generated explanations.
+**Identify suspected AI-generated posts on X. Auto-collapse them and keep your feed focused.**
 
-![Xtags in use: an intent label appears next to a post](store/assets/screenshot-labels-original.png)
+Xtags places an AI indicator and model score after existing post labels. Posts at or above your threshold collapse to their author and timestamp; use the borderless, underlined **Expand post** button to read them.
 
-*Actual screenshot provided by the author, with the UI in Simplified Chinese. The red arrow points to the intent label. Its score predates the 0.1.8 criteria update and may differ when judged again. AI estimates can be incorrect.*
+![Xtags 0.2.1: suspected AI indicators and collapsed posts on X](store/assets/screenshot-ai-feed-en.png)
+
+*Demonstration posts rendered by the current extension code. Scores are mocked, not live detection results or measured accuracy.*
+
+- **Choose your filter:** auto-collapse, light red background, or label only. The independent AI threshold starts at 0.85.
+- **Expand anytime:** opened posts retain a light red background; expansion is remembered in this tab. Detail pages stay open.
+- **Analyze long posts before expansion:** uses full text already available in X's page data. If unavailable, waits instead of judging just the preview.
+- **See intent too:** retains Inform, Persuade, Provoke, Sell, Entertain and Other, plus rage-bait and undisclosed-ad signals.
+
+Requires Chrome 140+, internet access and your selected provider's API key; provider charges may apply. Uses TypeSafe's [Jev](https://docs.typesafe.ai/) by default and supports compatible custom HTTPS APIs. After consent, post text and author handles are sent to that service. Analysis is not on-device. Estimates can be wrong and cannot prove authorship.
 
 ## Install
 
@@ -28,17 +37,17 @@ Your choice is saved locally and immediately updates labels, tooltips, the statu
 
 Every classified post receives one intent label: **Inform**, **Persuade**, **Provoke**, **Sell**, **Entertain**, or **Other**. The number beside it is the probability of that intent.
 
-Three additional signals appear when they meet the selected threshold:
+**Rage bait** and **Undisclosed ad** use the signal threshold. **Likely AI** is independent, with an initial threshold of **0.85**. At or above that threshold, list posts retain their author and timestamp while the body, media and actions are collapsed behind an **Expand post** button showing the estimated probability. The AI indicator follows the existing labels inline, with a borderless, underlined button.
 
-- **Rage bait**
-- **Undisclosed ad**
-- **Machine-generated**
+Expanded posts keep a light red background and can be collapsed again. Manual expansion is remembered for that post in the current tab, including after scrolling away and back. Detail pages stay expanded. The popup and Settings offer **Auto-collapse**, **Light red background**, and **Label only**; Settings also provides the independent AI threshold. Changing these preferences reuses cached judgments.
+
+The AI question estimates primary drafting or substantial rewriting, excluding simple proofreading or formatting. Short posts still receive estimates and long posts use the full text. Formatting, generic phrases, concrete details or typos alone cannot establish authorship. This is not proof of AI authorship, falsehood or harmful intent. The initial threshold has not been calibrated on a real labeled sample. Version 0.2.1 replaces the old formulaic-copy question and invalidates older judgments.
 
 Version 0.1.8 narrows the judgment criteria: forceful criticism or a missing citation alone does not imply rage bait; polished wording in a short post does not establish machine generation; and undisclosed promotion is estimated from the text without claiming an actual payment or partnership. Older judgments are invalidated and revisiting posts may make new API requests.
 
 Collapsed long posts are classified using the full text already present in X's page data, before you click **Show more**. If the full text is temporarily unavailable, Xtags displays **Full text unavailable** instead of classifying the preview. It retries three times automatically, then tries again when the page changes or the post is expanded. This update requires renewed data-transfer consent in Settings and invalidates old preview-based cache entries.
 
-The threshold accepts values from 0 to 1 and only affects these signals. You can also skip replies, show all signal probabilities, hide the status panel, pause processing, or clear the cache.
+Both thresholds accept values from 0 to 1; neither affects the intent label. You can also skip replies, show all signal probabilities, hide the status panel, pause processing, or clear the cache.
 
 ## Reliability and privacy
 
@@ -67,7 +76,9 @@ Set `CHROME_BIN` if your browser is installed outside a default location. Tests 
 
 ## Chrome Web Store preparation
 
-See [submission materials](store/README.md) for listing copy, artwork, permission explanations, reviewer instructions and remaining checks. The [English privacy policy](https://manifoldor.github.io/xtags/privacy.html), [Chinese policy](https://manifoldor.github.io/xtags/privacy.zh-CN.html) and [support page](https://manifoldor.github.io/xtags/support.html) are published from `docs/` on the `main` branch. See the [0.1.9 release notes](store/RELEASE_NOTES_0.1.9.md). Rebuild the candidate package with `python3 scripts/package-store.py`. Live testing and reviewer access preparation remain before submission.
+**0.2.1 is a packaged store candidate with updated AI-filter artwork. It is not published. Public Pages have been synchronized under explicit docs-only authorization; the source and submission materials correspond to 0.2.1. The store draft is saved and has not yet been submitted for review.**
+
+See [submission materials](store/README.md) for listing copy, artwork, permission explanations, reviewer instructions and remaining checks. The [English privacy policy](https://manifoldor.github.io/xtags/privacy.html), [Chinese policy](https://manifoldor.github.io/xtags/privacy.zh-CN.html) and [support page](https://manifoldor.github.io/xtags/support.html) are published from `docs/` on the `main` branch. See the [0.2.1 release notes](store/RELEASE_NOTES_0.2.1.md). Rebuild the candidate package with `python3 scripts/package-store.py`. Live testing and reviewer access preparation remain before submission.
 
 Version 0.1.3 adds a prominent data-transfer notice, explicit opt-in and withdrawal. Both new and existing installations require current consent before classification. English and Chinese privacy policies are bundled for offline access.
 
@@ -78,3 +89,7 @@ Version 0.1.5 adds custom HTTPS API endpoints. TypeSafe remains the default. Cus
 Version 0.1.8 refines the existing criteria without changing the label categories, classifies collapsed long posts from their full text before expansion, and restricts the API key to trusted extension contexts. Existing users must renew data-transfer consent. Chrome 140 or later is required.
 
 Version 0.1.9 fixes quoted-text attribution and stale uploads, adds bounded recovery from transient errors, limits and sanitizes provider responses, and improves theme contrast, keyboard details and save feedback. Clearing the cache now pauses processing first.
+
+Version 0.2.1 (local candidate) adds independent AI authorship estimates, an initial 0.85 threshold, automatic folding, tint-only and label-only modes. Model configuration is unchanged; Jev 1.14 still needs a separate real-sample evaluation.
+
+Historical intent-label example: [actual screenshot supplied by the author](store/assets/screenshot-labels-original.png). It does not show the new AI folding feature.

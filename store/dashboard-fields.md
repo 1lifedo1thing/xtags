@@ -1,22 +1,22 @@
 # 开发者后台填报内容
 
-**0.1.9 商城候选资料（2026-09-27）。** 公开政策已部署并与当前运行包一致；地址与验证记录见 `GITHUB_PAGES.md`。
+**0.2.1 本地商城候选资料（2026-10-16）。** 网站源文件与随包政策已同步；公开 Pages 已按明确授权部署，并匿名逐页核对一致，见 GITHUB_PAGES.md。
 
-适用于 0.1.9 商城候选代码。以下为基于代码的数据分类建议，不替发布者勾选合规认证。
+以下为基于代码的数据分类建议，不替发布者勾选合规认证。
 
 ## 名称、描述、分类
 
-- 名称：`Xtags`（以 manifest 为准，不添加“官方”“最佳”“免费无限”等词）。
-- 版本：`0.1.9`；最低 Chrome 版本：`140`。
-- 英文短描述已在 `_locales/en/messages.json`：`Label the intent behind posts on X with Jev, a model that returns probabilities rather than generated text.`
-- 中文短描述已在 `_locales/zh_CN/messages.json`；详细文案见 listing 文件。
+- 名称：中文 `Xtags — X 推文 AI 识别与过滤`；英文 `Xtags — AI Content Filter for X`（manifest 使用本地化名称）。
+- 版本：`0.2.1`；最低 Chrome 版本：`140`。
+- 英文短描述：`Identify suspected AI-generated posts on X / Twitter. Auto-collapse, highlight or label them, with adjustable thresholds.`
+- 中文短描述：`识别 X / Twitter 推文中的疑似 AI 生成内容，自动折叠或高亮提示，支持点击展开和自定义阈值。`
 - 语言：English / 简体中文。
 - 分类建议：选择后台中最接近阅读辅助/工具的分类；不要把未经验证的概率标签归为安全检测或内容真实性认证工具。
-- Homepage / Support / Privacy URL：见 GITHUB_PAGES.md；0.1.9 政策与支持页已匿名核对。
+- Homepage / Support / Privacy URL：见 GITHUB_PAGES.md；0.1.9 公开政策是历史核对记录；0.2.1 已于 2026-10-16 部署并核对。
 
 ## Single purpose description（直接粘贴）
 
-Xtags helps users interpret posts they browse on X by displaying AI-estimated intent labels and related signals, with probabilities, next to those posts. Its settings control only this labeling feature.
+Xtags helps users identify and filter suspected AI-generated text in posts they browse on X. It displays model estimates and can collapse or highlight those posts, alongside intent labels and configurable risk signals to assist reading. Its settings control this single post-analysis and display purpose.
 
 ## storage justification（直接粘贴）
 
@@ -28,7 +28,7 @@ https://api.typesafe.ai/* is required for the background service worker to send 
 
 ## X / Twitter content-script access（如后台单列该项，直接粘贴）
 
-Content scripts run only on https://x.com/* and https://twitter.com/*. They locate text-post containers, extract post text, author handles and post IDs, and insert labels beside those posts. For collapsed long posts, a packaged script reads the full text already present in X's page data before the user expands the post. That full text is sent to the selected classifier after renewed consent. They do not request the browser's full history database or access unrelated sites. The classifier requires reading the post content to provide the visible labeling feature.
+Content scripts run only on https://x.com/* and https://twitter.com/*. They locate text-post containers, extract post text, author handles and post IDs, and insert labels beside those posts, collapsing or highlighting suspected AI-generated content according to user settings. For collapsed long posts, a packaged script reads the full text already present in X's page data before the user expands the post. That full text is sent to the selected classifier after renewed consent. They do not request the browser's full history database or access unrelated sites. The classifier requires reading the post content to provide the visible labeling feature.
 
 ## Remote code
 

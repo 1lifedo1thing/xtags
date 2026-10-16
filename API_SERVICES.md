@@ -1,5 +1,7 @@
 # API 服务配置
 
+0.2.1 的主要用途是 X 推文疑似 AI 内容识别与过滤；以下接口同时提供 AI 倾向、主意图及辅助信号，客户端按阈值和模式显示。
+
 默认地址为 `https://api.typesafe.ai/v1/systemone`，无需修改。自定义服务必须兼容 **TypeSafe System One**，不是仅凭 URL 就能调用任意大模型接口；当前不适配 OpenAI `/v1/chat/completions` 或 `/v1/responses`。
 
 ## 使用步骤
@@ -16,6 +18,7 @@
 - 方法：`POST`，`Content-Type: application/json`，`Authorization: Bearer <该服务的 key>`。
 - 请求字段：`state.post.text`、`state.post.author`（handle 或 null）、`questions`、`model`。默认 `model` 是 `jev-latest`；四组 `questions` 的实际定义见 `extension/background.js`。
 - `questions` 定义 intent（choice）及 rage_bait、synthetic、undisclosed_ad（noul）判断。服务需要返回对应的数值概率，而非聊天文本。
+- 0.2.1 本地版保留 `synthetic` 协议字段，但问题改为“正文主要由 AI 撰写或大幅改写的可能性”，不再判断模板化程度；缓存版本升为 7。客户端使用独立的 `aiThreshold`（默认 0.85）和 `aiMode`（collapse / tint / label）控制展示，不新增请求或上传字段。
 - 成功响应示例（仅示意格式，不代表真实分类）：
 
 ```json

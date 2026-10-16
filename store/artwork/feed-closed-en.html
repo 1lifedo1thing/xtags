@@ -1,0 +1,1316 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;background:white;color:#15191e;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif}article{padding:16px 22px;border-bottom:1px solid #eff0f1}header{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:14px}a{color:inherit;text-decoration:none}header>a:first-child{font-weight:750}time,.handle{font-size:12px;color:#687481}.body{padding-top:10px;font-size:17px;line-height:1.65}.actions{color:#7e8a94;font-size:12px;padding-top:15px;display:flex;justify-content:space-between;max-width:420px}.more{color:#1d9bf0;font-size:14px;margin-top:5px}.media{height:100px;border-radius:12px;background:linear-gradient(110deg,#eef1ed,#e0e8df);display:flex;align-items:center;justify-content:center;color:#667261;font-size:14px;margin-top:12px}</style><article data-testid="tweet"><header><a href="/worknotes">Work Notes</a><span class="handle">@worknotes</span><a href="/worknotes/status/102"><time>18m</time></a></header><div class="body" data-testid="tweetText">In today&#x27;s fast-paced world, productivity is essential. Three key strategies can transform your workflow: set clear goals, optimize your process, and reflect consistently. Let&#x27;s unlock your full potential!</div><div class="actions"><span>♡ 12</span><span>↻ 3</span><span>↗ 108</span></div></article><script>globalThis.chrome={i18n:{getUILanguage:()=>"en"},storage:{session:{onChanged:{addListener:()=>{}}}},runtime:{sendMessage:(msg,cb)=>{if(msg.type==="xtags-config"){cb({ok:true,data:{"hasKey": true, "enabled": true, "consentVersion": 2, "showHud": false, "skipReplies": false, "language": "en", "aiMode": "collapse"}});return;}if(msg.type==="jev-cancel"){cb({ok:true});return;}setTimeout(()=>cb({ok:true,data:{answers:{intent:{choice:"inform",confidence:.86,probabilities:{inform:.86}},rage_bait:{noul:.12},undisclosed_ad:{noul:.08},synthetic:{noul:msg.id==="102"?.94:msg.id==="104"?.91:.17}},usage:{input_tokens:120}}}),0);}}};
+/* Runs in X's page world so it can read the post data already attached to React. */
+(() => {
+  "use strict";
+  const REQUEST = "xtags:fulltext-request";
+  const RESPONSE = "xtags:fulltext-response";
+
+  document.addEventListener(REQUEST, (event) => {
+    const article = event.target;
+    if (!(article instanceof Element) || !article.matches('article[data-testid="tweet"]')) return;
+    let request;
+    try { request = JSON.parse(event.detail); } catch { return; }
+    if (!/^\d{1,30}$/.test(request?.id) || !Number.isSafeInteger(request?.token)) return;
+    const ownTime = [...article.querySelectorAll('a[href*="/status/"]')].find((a) => {
+      if (!a.querySelector("time") || a.closest('article[data-testid="tweet"]') !== article) return false;
+      for (let parent = a.parentElement; parent && parent !== article; parent = parent.parentElement) {
+        if (parent.matches('[role="link"], [data-testid="quoteTweet"]')) return false;
+      }
+      return true;
+    });
+    if (ownTime?.getAttribute("href")?.match(/status\/(\d+)/)?.[1] !== request.id) return;
+
+    let fiber = article[Object.keys(article).find((key) => key.startsWith("__reactFiber$"))];
+    let text = null;
+    for (let depth = 0; fiber && depth < 40; depth++, fiber = fiber.return) {
+      const tweet = fiber.memoizedProps?.tweet;
+      if (String(tweet?.id_str ?? tweet?.rest_id) !== request.id) continue;
+      const note = tweet.note_tweet;
+      const candidate = note?.text ?? note?.note_tweet_results?.result?.text;
+      if (typeof candidate === "string" && candidate.trim() && candidate.length <= 100000) {
+        text = candidate.trim();
+        break;
+      }
+    }
+    article.dispatchEvent(new CustomEvent(RESPONSE, {
+      detail: JSON.stringify({ token: request.token, id: request.id, text }),
+    }));
+  }, true);
+})();
+
+/* Shared endpoint validation and consent binding across extension contexts. */
+(() => {
+  const OFFICIAL_URL = "https://api.typesafe.ai/v1/systemone";
+  function normalize(value) {
+    try {
+      if (typeof value !== "string" || !value.trim() || /[\s\\]/.test(value.trim())) throw new Error();
+      const url = new URL(value.trim());
+      if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash ||
+          /[?#*]/.test(value) || !url.hostname) throw new Error();
+      return url.href;
+    } catch {
+      throw Object.assign(new Error("请输入不含账号、查询参数或片段的完整 HTTPS API URL"), { code: "errorInvalidEndpoint" });
+    }
+  }
+  const endpoint = cfg => normalize(cfg.apiEndpoint === undefined ? OFFICIAL_URL : cfg.apiEndpoint);
+  // Chrome host permissions apply to a host, not an individual path or port.
+  const originPattern = value => `https://${new URL(normalize(value)).hostname}/*`;
+  function hasConsent(cfg, version = 1) {
+    try {
+      return cfg.consentVersion === version && endpoint(cfg) === normalize(
+        cfg.consentEndpoint === undefined ? OFFICIAL_URL : cfg.consentEndpoint);
+    } catch { return false; }
+  }
+  globalThis.XtagsService = Object.freeze({ OFFICIAL_URL, normalize, endpoint, originPattern, hasConsent });
+})();
+
+/* Shared UI translations. Model questions and cached probabilities are language-independent. */
+(() => {
+  "use strict";
+  const messages = {
+    en: {
+      subtitle: "Spot suspected AI posts. Keep your feed focused.",
+      language: "Language",
+      languageAuto: "Auto (system)",
+      serviceTitle: "API service",
+      providerLabel: "Provider",
+      providerOfficial: "TypeSafe (official, default)",
+      providerCustom: "Custom service",
+      apiEndpointLabel: "Complete API URL",
+      currentService: "Current destination",
+      endpointHint: "Custom services must support the TypeSafe System One request and response format. Enter the complete HTTPS endpoint; OpenAI chat/completions APIs are not supported.",
+      endpointChangeNotice: "Changing the URL pauses classification, clears the saved key and cache, and requires new consent. Chrome will ask for access to the selected host only.",
+      saveEndpoint: "Save service URL",
+      endpointSaved: "Service saved. Review the notice and configure a key for this service.",
+      endpointPending: "Unsaved service change. Save the URL before granting consent or entering a key. The current destination below remains active until saved.",
+      errorInvalidEndpoint: "Enter a complete HTTPS API URL without credentials, query parameters or fragments.",
+      errorEndpointPermission: "API host access was not granted. Save the service URL again to authorize access.",
+      disclosureCustomSummary: "Xtags sends post text, author handles and your API credential to the custom service shown below to estimate AI-generated content and intent signals. Its operator controls data handling and retention; review its policy before agreeing.",
+      disclosureCustomLimits: "Use a key issued for this service. Provider charges may apply. AI estimates can be wrong. TypeSafe's privacy assurances do not apply to a custom provider.",
+      settingsTitle: "Xtags settings",
+      preferencesTitle: "API key and preferences",
+      openSettings: "Settings",
+      setupConsent: "Open Settings to review the data notice and agree before using Xtags.",
+      setupKey: "Add your API service key in Settings to start classification.",
+      openSettingsFailed: "Could not open Settings. Open Xtags options from Chrome's extensions page.",
+      disclosureTitle: "Before you enable Xtags",
+      disclosureSummary: "Xtags sends post text and author handles to TypeSafe AI to estimate AI-generated content and intent signals. Analysis is not on-device.",
+      disclosureScope: "For collapsed long posts, Xtags reads the full text already present in X's page data and sends it for classification before you expand the post. It also processes rendered posts outside the current viewport and protected posts you can access.",
+      fullTextUnavailable: "Full text unavailable",
+      disclosureLimits: "Your TypeSafe API key is required. API usage may incur charges. AI estimates can be wrong.",
+      privacyPolicy: "Xtags privacy policy",
+      providerPrivacy: "TypeSafe privacy policy",
+      getKey: "Get a TypeSafe API key",
+      consentCheck: "I understand this data transfer and agree to use the service at the address shown above for classification.",
+      grantConsent: "Agree and enable",
+      consentGranted: "Data transfer consent saved",
+      revokeConsent: "Withdraw consent and pause",
+      withdrawalNote: "Withdrawal stops new requests; data already sent cannot be recalled. Your key and cache remain until you clear them.",
+      errorConsentRequired: "Open Xtags Settings and review the data transfer notice before enabling classification.",
+      apiKey: "API KEY",
+      apiKeyHint: "Saved locally when you leave this field. Sent only to the selected API service.",
+      threshold: "Signal threshold",
+      thresholdHint: "Applies to rage bait and undisclosed ads. AI has its own threshold.",
+      enabled: "Enabled",
+      skipReplies: "Skip replies",
+      showAll: "Show all signal probabilities",
+      showHud: "Show status panel",
+      reset: "Pause and clear cache",
+      resetDone: "Paused and cache cleared",
+      resetHint: "Stops new analysis and deletes local judgments. Keeps your API key. Enable Xtags again when you want to resume.",
+      settingsSaved: "Saved. Takes effect immediately.",
+      retryFailed: "Retry failed posts",
+      retryStarted: "Retry requested for open X pages.",
+      healthWaiting: "Enabled · waiting for a classification request",
+      healthOk: "Last API request succeeded",
+      labelDetails: "{intent} {probability}. View label details",
+      errorResponseTooLarge: "API response is too large. Check the service configuration.",
+      errorAuth: "API access failed. Check the key, provider credits and permissions in Settings.",
+      errorRateLimit: "The service is rate limiting requests. A limited retry will follow.",
+      resetFailed: "Could not clear cache. Try again.",
+      saveFailed: "Could not save settings. Try again.",
+      loadFailed: "Could not load settings. Reopen this page.",
+      about: "About Xtags",
+      unknownAuthor: "Unknown author",
+      disclaimer: "For personal browsing only. AI labels may be incorrect and do not represent the author's views. Not affiliated with X Corp.",
+      inform: "Inform",
+      persuade: "Persuade",
+      provoke: "Provoke",
+      sell: "Sell",
+      entertain: "Entertain",
+      other: "Other",
+      rage_bait: "Rage bait",
+      undisclosed_ad: "Undisclosed ad",
+      synthetic: "Likely AI",
+      aiThreshold: "AI threshold",
+      aiThresholdHint: "At or above this probability, show the AI label and apply the selected display mode. 0.85 is a starting point, not a validated accuracy guarantee.",
+      aiMode: "Likely AI posts",
+      aiModeCollapse: "Auto-collapse",
+      aiModeTint: "Light red background",
+      aiModeLabel: "Label only",
+      aiModeHint: "In lists, collapse after analysis. Detail pages stay open. Adjust the AI threshold in Settings.",
+      aiExpand: "Expand post",
+      aiCollapse: "Collapse post",
+      aiNotice: "Estimated from text; not proof of authorship, falsehood or harmful intent.",
+      intent: "Intent",
+      confidence: "Confidence",
+      paused: "Paused",
+      containers: "Posts on page",
+      skipped: "Skipped",
+      replies: "replies",
+      seen: "Seen",
+      assessed: "Assessed",
+      flagged: "Flagged",
+      failed: "Failed",
+      tokens: "Tokens",
+      lastError: "Last error",
+      errorCancelled: "Settings changed; request cancelled.",
+      errorNoKey: "Configure your API service key in Settings.",
+      errorNoResponse: "The extension background did not respond.",
+      errorInvalidRequest: "Invalid post request.",
+      errorInvalidResponse: "The API returned an invalid response.",
+      errorQueueFull: "The request queue is full. Refresh the page later.",
+      errorSource: "Unsupported message source.",
+      errorCacheWrite: "Could not save the cache. Reloading may repeat requests.",
+      errorTimeout: "The request timed out. Try again later.",
+      errorNetwork: "Network request failed. Check your connection and try again.",
+      errorHttp: "API request failed. Check your service settings and retry.",
+      errorRequest: "Request failed. Retry or check Settings.",
+    },
+    zh: {
+      subtitle: "识别疑似 AI 推文，减少阅读干扰",
+      language: "语言",
+      languageAuto: "自动（跟随系统）",
+      serviceTitle: "API 服务",
+      providerLabel: "服务提供方",
+      providerOfficial: "TypeSafe 官方（默认）",
+      providerCustom: "自定义服务",
+      apiEndpointLabel: "完整 API URL",
+      currentService: "当前数据接收地址",
+      endpointHint: "自定义服务须兼容 TypeSafe System One 的请求和响应格式。请填写完整 HTTPS 接口地址；不支持 OpenAI chat/completions 接口。",
+      endpointChangeNotice: "更换地址会暂停分类、清除已保存的 key 和缓存，并要求重新同意。Chrome 仅申请你指定域名的访问权限。",
+      saveEndpoint: "保存服务地址",
+      endpointSaved: "服务已保存，请阅读数据说明，并配置该服务的 key。",
+      endpointPending: "服务地址尚未保存。请先保存，再同意并填写 key；保存前仍使用下方当前地址。",
+      errorInvalidEndpoint: "请输入完整 HTTPS API URL，不要包含账号密码、查询参数或片段。",
+      errorEndpointPermission: "未获得 API 域名访问权限，请重新保存服务地址并授权。",
+      disclosureCustomSummary: "Xtags 会将帖子正文、作者账号和你的 API 凭证发送给下方自定义服务，以识别疑似 AI 内容并生成意图和信号标签。数据处理及保留由该服务运营方决定，请先了解其隐私政策。",
+      disclosureCustomLimits: "请使用该服务签发的 key，可能产生服务费用。AI 判断可能有误。TypeSafe 的隐私承诺不适用于自定义服务。",
+      settingsTitle: "Xtags 设置",
+      preferencesTitle: "API key 与偏好设置",
+      openSettings: "设置",
+      setupConsent: "请先打开设置，阅读数据说明并同意后再使用 Xtags。",
+      setupKey: "请在设置中填写当前服务的 API key，开始分类。",
+      openSettingsFailed: "无法打开设置，请从 Chrome 扩展管理页打开 Xtags 选项。",
+      disclosureTitle: "启用前请了解",
+      disclosureSummary: "Xtags 会将帖子正文和作者账号发送给 TypeSafe AI，识别疑似 AI 内容并生成意图和信号标签。分析并非在本机完成。",
+      disclosureScope: "折叠的长推文会在你点击展开前，从 X 页面数据中读取全文并发送分类。处理范围还包括当前视口之外的已渲染帖子，以及你有权限访问的受保护帖子。",
+      fullTextUnavailable: "全文暂不可用",
+      disclosureLimits: "需要自备 TypeSafe API key，使用可能产生费用。AI 判断可能有误。",
+      privacyPolicy: "Xtags 隐私政策",
+      providerPrivacy: "TypeSafe 隐私政策",
+      getKey: "获取 TypeSafe API key",
+      consentCheck: "我已了解上述数据传输，并同意使用上方地址的服务进行分类。",
+      grantConsent: "同意并启用",
+      consentGranted: "已保存数据传输同意",
+      revokeConsent: "撤回同意并暂停",
+      withdrawalNote: "撤回后停止新请求，已发送的数据无法撤回。key 和缓存会保留，直至你手动清除。",
+      errorConsentRequired: "请打开 Xtags 设置，阅读数据传输说明并同意后再启用分类。",
+      apiKey: "API KEY",
+      apiKeyHint: "移出输入框后保存到本地，只用于调用当前 API 服务",
+      threshold: "触发阈值",
+      thresholdHint: "仅用于诱导愤怒和未披露推广；AI 使用独立阈值",
+      enabled: "启用",
+      skipReplies: "跳过回复",
+      showAll: "显示所有信号与 AI 数值",
+      showHud: "显示右上角面板",
+      reset: "暂停并清空缓存",
+      resetDone: "已暂停并清空缓存",
+      resetHint: "停止后续分析并删除本地判断，保留 API key。需要继续时再启用 Xtags。",
+      settingsSaved: "已保存，立即生效",
+      retryFailed: "重试失败的帖子",
+      retryStarted: "已通知打开的 X 页面重试",
+      healthWaiting: "已启用，等待分类请求",
+      healthOk: "最近一次 API 请求成功",
+      labelDetails: "{intent} {probability}，查看标签详情",
+      errorResponseTooLarge: "API 响应过大，请检查服务配置",
+      errorAuth: "API 访问失败，请在设置中检查 key、服务额度和权限",
+      errorRateLimit: "服务暂时限流，将进行有限次数的重试",
+      resetFailed: "清空失败，请重试",
+      saveFailed: "设置保存失败，请重试",
+      loadFailed: "设置加载失败，请重新打开页面",
+      about: "关于 Xtags",
+      unknownAuthor: "未署名",
+      disclaimer: "仅供个人本地浏览辅助使用。分类结果由 AI 生成，可能有误，不代表作者立场。与 X Corp 无关联。",
+      inform: "告知",
+      persuade: "说服",
+      provoke: "挑拨",
+      sell: "推销",
+      entertain: "娱乐",
+      other: "其他",
+      rage_bait: "诱导愤怒",
+      undisclosed_ad: "未披露推广",
+      synthetic: "疑似 AI",
+      aiThreshold: "AI 判断阈值",
+      aiThresholdHint: "达到阈值后显示 AI 标签，并按所选方式展示。0.85 是初始值，不代表经过验证的识别准确率。",
+      aiMode: "疑似 AI 生成的帖子",
+      aiModeCollapse: "自动折叠",
+      aiModeTint: "仅微红提示",
+      aiModeLabel: "仅标签",
+      aiModeHint: "列表中分析完成后折叠，详情页默认展开。AI 阈值可在设置中调整。",
+      aiExpand: "展开帖子",
+      aiCollapse: "收起帖子",
+      aiNotice: "根据文本估计，不是作者来源证明，也不代表内容虚假或具有恶意。",
+      intent: "意图",
+      confidence: "置信",
+      paused: "已暂停",
+      containers: "容器",
+      skipped: "跳过",
+      replies: "回复",
+      seen: "看过",
+      assessed: "判定",
+      flagged: "标了",
+      failed: "失败",
+      tokens: "token",
+      lastError: "最后错误",
+      errorCancelled: "设置已变化，请求已取消",
+      errorNoKey: "请在设置中配置当前服务的 API key",
+      errorNoResponse: "扩展后台没有响应",
+      errorInvalidRequest: "帖子请求格式无效",
+      errorInvalidResponse: "API 返回的判断格式无效",
+      errorQueueFull: "请求队列已满，请稍后刷新页面",
+      errorSource: "不支持的消息来源",
+      errorCacheWrite: "缓存保存失败；刷新后可能重新请求",
+      errorTimeout: "请求超时，请稍后重试",
+      errorNetwork: "网络请求失败，请检查连接后重试",
+      errorHttp: "API 请求失败，请检查服务设置后重试",
+      errorRequest: "请求失败，请重试或检查设置",
+    },
+  };
+
+  function normalize(preference) {
+    return preference === "en" || preference === "zh" ? preference : "auto";
+  }
+
+  function resolve(preference) {
+    const selected = normalize(preference);
+    if (selected !== "auto") return selected;
+    // Chrome exposes its UI language, which normally follows the OS language.
+    const system = globalThis.chrome?.i18n?.getUILanguage?.() || globalThis.navigator?.language || "en";
+    return /^zh(?:[-_]|$)/i.test(system) ? "zh" : "en";
+  }
+
+  function create(preference = "auto") {
+    let selected = normalize(preference);
+    const api = {
+      get preference() { return selected; },
+      get locale() { return resolve(selected); },
+      setPreference(value) { selected = normalize(value); },
+      t(key, values = {}) {
+        const locale = resolve(selected);
+        const text = Object.hasOwn(messages[locale], key) ? messages[locale][key] : messages.en[key] ?? key;
+        return text.replace(/\{(\w+)\}/g, (match, name) => Object.hasOwn(values, name) ? String(values[name]) : match);
+      },
+      error(error) {
+        if (typeof error === "string") return api.t("errorRequest");
+        const key = error?.code && Object.hasOwn(messages.en, error.code) ? error.code : "errorRequest";
+        const status = Number.isInteger(error?.status) && error.status >= 100 && error.status <= 599 ? ` (HTTP ${error.status})` : "";
+        return api.t(key) + status;
+      },
+    };
+    return api;
+  }
+  globalThis.XtagsI18n = Object.freeze({ create, normalize, resolve });
+})();
+
+/*
+ * 内容脚本：提取帖子、贴标签、维护页面内状态和统计。
+ *
+ * 它**不发请求**——那件事在 background.js 里做，因为内容脚本的 fetch 受 CORS 约束。
+ * 这里只负责 DOM 那一半：读状态、渲染标签、决定什么时候该问。
+ *
+ * 判断和展示是分开的：background 拿回来的四个判断是"是什么"，怎么组合成标签、
+ * 什么时候显示由下面的 compose() 决定。持久化缓存由后台独占管理。
+ */
+
+(function () {
+  "use strict";
+
+  // ── 配置（从后台获取脱敏快照，监听临时存储变化）───────────────────────────
+  const CONSENT_VERSION = 2;
+  const DEFAULTS = {
+    hasKey: false,
+    keyRevision: "",
+    model: "jev-latest",
+    threshold: 0.8,
+    aiThreshold: 0.85,
+    aiMode: "collapse",
+    showAll: false,
+    enabled: false,
+    consentVersion: 0,
+    apiEndpoint: XtagsService.OFFICIAL_URL,
+    consentEndpoint: XtagsService.OFFICIAL_URL,
+    skipReplies: true,
+    showHud: true,
+    resetToken: 0,
+    language: "auto",
+    retryToken: 0,
+  };
+
+  // 内容脚本只接收不含 API key 的临时设置；请求和持久化缓存统一交给后台。
+  let HAS_KEY = false;
+  let MODEL = "jev-latest";
+  let RESET_TOKEN = 0;
+  let THRESHOLD = 0.8;
+  let AI_THRESHOLD = 0.85;
+  let AI_MODE = "collapse";
+  let SHOW_ALL = false;
+  let ENABLED = false;
+  let CONSENTED = false;
+  const serviceConfig = { apiEndpoint: XtagsService.OFFICIAL_URL, consentEndpoint: XtagsService.OFFICIAL_URL, consentVersion: 0 };
+  let SKIP_REPLIES = true;
+  let SHOW_HUD = true;
+
+  const MAX_INFLIGHT = 3;
+  const CACHE_LIMIT = 3000;
+  const MAX_QUEUE = 100;
+  const RETRY_DELAYS = [15000, 60000];
+  const FULL_TEXT_RETRY_DELAYS = [500, 1500, 3500];
+
+  /**
+   * 帖子容器。用 article[data-testid="tweet"] 而不是时间线的 cellInnerDiv——
+   * 后者只是"时间线单元格"的包装，推荐页/关注页/用户页碰巧都在时间线里所以能用，
+   * 但帖子详情页的主帖未必走同一套结构。article 是每一篇帖子的规范容器。
+   */
+  const POST_SELECTOR = 'article[data-testid="tweet"]';
+
+  // ── 标签外观 ──────────────────────────────────────────────────────────────
+  /**
+   * 严重度阶梯，越往下越醒目。
+   *
+   * 低段三种（灰/绿/青绿）是平级的，颜色只为区分种类，不表示谁更严重；
+   * 从"说服"往上，颜色才开始同时承担严重度的含义。
+   *
+   * 把八种颜色排成一条人眼能读出的严格序列是不现实的，超过四五级就分不出高低。
+   * **真正承载含义的是文字，颜色是辅助**——色觉不同或截图转灰度时，读到的信息
+   * 不该变。这也是为什么橙和红那两档还额外加了字重。
+   */
+  const LEVELS = {
+    calm: { fg: "#444b50", bg: "#edf0f2", darkFg: "#e0e5e9", darkBg: "#293238", weight: 500 },
+    playful: { fg: "#166534", bg: "#e7f3eb", darkFg: "#a7f3b5", darkBg: "#153725", weight: 500 },
+    misc: { fg: "#115e59", bg: "#e4f2f0", darkFg: "#99f6e4", darkBg: "#133b37", weight: 500 },
+    notice: { fg: "#1e40af", bg: "#e8eefb", darkFg: "#bfdbfe", darkBg: "#182f54", weight: 500 },
+    amber: { fg: "#854d0e", bg: "#fff1d6", darkFg: "#fde68a", darkBg: "#3f2e10", weight: 500 },
+    violet: { fg: "#6b21a8", bg: "#f1e9fc", darkFg: "#e9d5ff", darkBg: "#36204e", weight: 500 },
+    caution: { fg: "#9a3412", bg: "#fff0e5", darkFg: "#fed7aa", darkBg: "#482712", weight: 600 },
+    alarm: { fg: "#991b1b", bg: "#fde9e9", darkFg: "#fecaca", darkBg: "#471f25", weight: 600 },
+  };
+
+  const i18n = XtagsI18n.create();
+  const SIGNALS = [
+    { key: "rage_bait", level: "alarm" },
+    { key: "undisclosed_ad", level: "caution" },
+  ];
+
+  const INTENT_LEVEL = {
+    inform: "calm",
+    entertain: "playful",
+    other: "misc",
+    persuade: "notice",
+    sell: "amber",
+    provoke: "alarm",
+  };
+
+  // ── 状态 ──────────────────────────────────────────────────────────────────
+  // 只缓存原始概率；每次渲染都应用当前阈值。
+  const cache = new Map();
+  const cacheText = new Map();
+  const knownLong = new Set();
+  const fullTextRetries = new Map();
+  const inflight = new Map();
+  const failed = new Map();
+  const skipped = new Set();
+  let queue = [];
+  let pagePosts = new Map();
+  let queueOverflow = false;
+  let active = 0;
+  let generation = 0;
+  let lastContainerCount = 0;
+  let booted = false;
+  const earlyChanges = {};
+
+  const stats = {
+    seen: 0,
+    asked: 0,
+    labeled: 0,
+    skipped: 0,
+    failed: 0,
+    tokens: 0,
+    lastError: "",
+  };
+
+  // ── 判断 → 标签 ───────────────────────────────────────────────────────────
+  /**
+   * 意图（每条都有）+ 触发信号（过了阈值的）。
+   *
+   * 意图本身不设阈值——它总有一个答案，只是需要读一眼。两项风险信号使用共同阈值，AI 倾向使用独立阈值：
+   * 它们决定这条帖子是否被标记为"有问题"。这样调阈值时意图标签稳定不动，只有
+   * 警示部分在变，前后对比才看得清。
+   */
+  function compose(a) {
+    const key = a.intent.choice;
+    const signals = SIGNALS.map(({ key, level }) => ({ key, level, p: a[key].noul }));
+    return {
+      intent: i18n.t(key),
+      intentLevel: INTENT_LEVEL[key] ?? "calm",
+      intentP: a.intent.probabilities[key],
+      signals: signals.filter((signal) => signal.p >= THRESHOLD),
+      allSignals: signals,
+      aiP: a.synthetic.noul,
+      aiFlagged: a.synthetic.noul >= AI_THRESHOLD,
+      tip: tooltip(a),
+    };
+  }
+
+  function tooltip(a) {
+    return [
+      `${i18n.t("intent")}  ${i18n.t(a.intent.choice)} (${a.intent.choice})   ${i18n.t("confidence")} ${a.intent.confidence.toFixed(3)}`,
+      ...SIGNALS.map(({ key }) => `${i18n.t(key)}  ${a[key].noul.toFixed(3)}`),
+      `${i18n.t("synthetic")}  ${a.synthetic.noul.toFixed(3)}`,
+      i18n.t("aiNotice"),
+    ].join("\n");
+  }
+
+  // ── 请求（走 background，内容脚本自己 fetch 会被 CORS 挡）──────────────────
+  function ask(job) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: "jev-ask",
+        requestId: job.requestId, apiEndpoint: serviceConfig.apiEndpoint, id: job.id, isReply: job.isReply, state: job.state, model: MODEL, resetToken: RESET_TOKEN,
+      }, (res) => {
+        if (chrome.runtime.lastError) return reject(Object.assign(new Error("Background unavailable"), { code: "errorNoResponse", retryable: true }));
+        if (!res) return reject(Object.assign(new Error("background did not respond"), { code: "errorNoResponse" }));
+        if (!res.ok) return reject(Object.assign(new Error(res.error), { cancelled: res.cancelled, code: res.code, status: res.status, retryable: res.retryable }));
+        resolve(res.data);
+      });
+    });
+  }
+
+  function invalidateRequests() {
+    generation++;
+    queue = [];
+    for (const job of inflight.values()) cancelJob(job);
+    inflight.clear();
+    clearFailures();
+    for (const retry of fullTextRetries.values()) if (retry.timer !== null) clearTimeout(retry.timer);
+    fullTextRetries.clear();
+  }
+
+  function cancelJob(job) {
+    if (!job.running || job.cancelled) return;
+    job.cancelled = true;
+    const failure = failed.get(job.id);
+    if (failure) failure.ready = true;
+    try {
+      chrome.runtime.sendMessage({ type: "jev-cancel", requestId: job.requestId }, () => { void chrome.runtime.lastError; });
+    } catch { /* The background also checks settings before sending. */ }
+  }
+
+  function clearFailure(id) {
+    const entry = failed.get(id);
+    if (entry?.timer !== null && entry?.timer !== undefined) clearTimeout(entry.timer);
+    failed.delete(id);
+  }
+  function clearFailures() {
+    for (const id of failed.keys()) clearFailure(id);
+  }
+  function armRetry(id, entry) {
+    if (!entry.retryable || entry.attempts >= RETRY_DELAYS.length || entry.timer !== null) return;
+    entry.timer = setTimeout(() => {
+      entry.timer = null;
+      if (failed.get(id) !== entry) return;
+      entry.ready = true;
+      scan();
+    }, RETRY_DELAYS[entry.attempts]);
+  }
+  function retryFailures(manual = false) {
+    for (const [id, entry] of failed) {
+      if (!manual && (!entry.retryable || entry.attempts >= RETRY_DELAYS.length)) continue;
+      if (entry.timer !== null) clearTimeout(entry.timer);
+      entry.timer = null;
+      entry.ready = true;
+      if (manual) entry.attempts = -1;
+    }
+    if (booted) scan();
+  }
+  window.addEventListener("online", () => retryFailures());
+  window.addEventListener("pagehide", invalidateRequests);
+  window.addEventListener("pageshow", (event) => { if (event.persisted && booted) scan(); });
+
+  function matchesJob(job, record) {
+    return record && record.el.isConnected && !record.post.incomplete &&
+      !(SKIP_REPLIES && record.reply) && record.post.text === job.state.post.text &&
+      (record.post.author ? `@${record.post.author}` : null) === job.state.post.author;
+  }
+  function currentRecord(job) {
+    for (const record of pagePosts.get(job.id) || []) {
+      if (!record.el.isConnected) continue;
+      const post = extract(record.el);
+      const now = post?.id === job.id ? { el: record.el, post, reply: isReply(record.el) } : null;
+      if (matchesJob(job, now)) return now;
+    }
+    return null;
+  }
+  function pump() {
+    if (!CONSENTED || !ENABLED || !HAS_KEY) return;
+    while (active < MAX_INFLIGHT && queue.length > 0) {
+      const job = queue.shift();
+      // DOM nodes can be recycled between a scan and a free request slot.
+      if (!currentRecord(job)) {
+        if (inflight.get(job.id) === job) inflight.delete(job.id);
+        scheduleScan();
+        continue;
+      }
+      job.running = true;
+      job.requestId = crypto.randomUUID();
+      active++;
+      ask(job)
+        .then((r) => {
+          if (job.cancelled || job.generation !== generation || !CONSENTED || !ENABLED || !HAS_KEY) return;
+          if (!currentRecord(job)) { scheduleScan(); return; }
+          const verdict = compose(r.answers);
+          stats.asked++;
+          stats.tokens += r.usage?.input_tokens ?? 0;
+          if (verdict.signals.length > 0 || verdict.aiFlagged) stats.labeled++;
+          cache.delete(job.id);
+          cache.set(job.id, r.answers);
+          cacheText.set(job.id, job.state.post.text);
+          while (cache.size > CACHE_LIMIT) {
+            const oldest = cache.keys().next().value;
+            cache.delete(oldest); cacheText.delete(oldest);
+          }
+          clearFailure(job.id);
+          stats.failed = failed.size;
+          if (!failed.size) stats.lastError = "";
+          if (r.warning) stats.lastError = { code: r.warningCode };
+          paint(job.id);
+        })
+        .catch((e) => {
+          if (job.cancelled || job.generation !== generation || e.cancelled) return;
+          const entry = { text: job.state.post.text, attempts: job.retryAttempt || 0, ready: false, timer: null,
+            code: e.code || "errorRequest", status: e.status,
+            retryable: typeof e.retryable === "boolean" ? e.retryable :
+              ["errorNetwork", "errorTimeout", "errorNoResponse", "errorQueueFull"].includes(e.code) };
+          clearFailure(job.id);
+          failed.set(job.id, entry);
+          while (failed.size > CACHE_LIMIT) clearFailure(failed.keys().next().value);
+          stats.failed = failed.size;
+          stats.lastError = { code: entry.code, status: entry.status };
+          armRetry(job.id, entry);
+          scheduleScan();
+        })
+        .finally(() => {
+          active--;
+          if (inflight.get(job.id) === job) inflight.delete(job.id);
+          refreshUi();
+          pump();
+          if (queueOverflow) scheduleScan();
+        });
+    }
+  }
+
+  // ── 提取 ──────────────────────────────────────────────────────────────────
+  /**
+   * 这条是不是回复。
+   *
+   * 用**文本前缀**匹配"回复 @xxx"那一行，而不是某个 data-testid——因为 action bar
+   * 里那个"回复"按钮的 testid 恰好也叫 reply，按 testid 匹配会把每一条帖子都当成
+   * 回复，于是所有标签消失且看不出原因。
+   *
+   * 代价是依赖界面语言，现在覆盖中英两种。
+   */
+  const REPLY_PREFIX = /^(Replying to|回复|正在回复)/;
+
+  function belongsToPost(node, article) {
+    if (node.closest(POST_SELECTOR) !== article) return false;
+    if (node.matches('div[role="link"], [data-testid="quoteTweet"]')) return false;
+    for (let parent = node.parentElement; parent && parent !== article; parent = parent.parentElement) {
+      if (parent.matches('[role="link"], [data-testid="quoteTweet"]')) return false;
+    }
+    return true;
+  }
+  function isReply(el) {
+    for (const div of el.querySelectorAll("div")) {
+      if (!belongsToPost(div, el) || div.closest('[data-testid="tweetText"], [data-xtags-badge]')) continue;
+      if (div.querySelector('[data-testid="tweetText"], article[data-testid="tweet"]')) continue;
+      const text = (div.textContent || "").trim();
+      if (text.length > 0 && text.length < 200 && REPLY_PREFIX.test(text)) return true;
+    }
+    return false;
+  }
+
+  function extract(el) {
+    const textEl = [...el.querySelectorAll('[data-testid="tweetText"]')].find((node) => belongsToPost(node, el));
+    if (!textEl) return null;
+
+    // display:none changes innerText semantics. Reuse the exact visible preview only
+    // while its DOM is unchanged; restore before reading edits or recycled nodes.
+    const presentation = aiPresentations.get(el);
+    if (presentation && (presentation.textEl !== textEl || presentation.markup !== textEl.innerHTML ||
+        findTimeAnchor(el)?.getAttribute("href") !== presentation.href)) clearAiPresentation(el);
+    let text = aiPresentations.get(el)?.preview ?? textEl.innerText.trim();
+    if (!text) return null;
+
+    const statusLink = findTimeAnchor(el);
+    const id = statusLink?.getAttribute("href")?.match(/status\/(\d+)/)?.[1];
+    if (!id) return null;
+
+    // X often keeps the entire Note Tweet in page data while tweetText contains
+    // only the preview. Never send that preview as if it were the whole post.
+    let incomplete = false;
+    const folded = [...el.querySelectorAll('[data-testid="tweet-text-show-more-link"]')]
+      .some((button) => belongsToPost(button, el));
+    if (folded || knownLong.has(id)) {
+      const token = ++fullTextToken;
+      let result = null;
+      const receive = (event) => {
+        try {
+          const data = JSON.parse(event.detail);
+          if (data.token === token && data.id === id) result = data.text;
+        } catch { /* Ignore invalid page data. */ }
+      };
+      el.addEventListener("xtags:fulltext-response", receive);
+      try {
+        el.dispatchEvent(new CustomEvent("xtags:fulltext-request", {
+          detail: JSON.stringify({ id, token }),
+        }));
+      } finally {
+        el.removeEventListener("xtags:fulltext-response", receive);
+      }
+      if (typeof result === "string" && result.length <= 100000 && result.trim()) {
+        text = result;
+        knownLong.delete(id);
+        knownLong.add(id);
+        while (knownLong.size > CACHE_LIMIT) knownLong.delete(knownLong.values().next().value);
+      } else incomplete = folded;
+    }
+
+    // Keep author and body tied to the same outer status link, not a repost attribution.
+    const author = statusLink.getAttribute("href").match(/^(?:https:\/\/(?:x|twitter)\.com)?\/([A-Za-z0-9_]{1,15})\/status\//)?.[1] ?? null;
+
+    return { id, text, author, incomplete };
+  }
+
+  let fullTextToken = 0;
+
+  // ── 贴标签 ────────────────────────────────────────────────────────────────
+  const BADGE_ATTR = "data-xtags-badge";
+
+  // Only presentation metadata lives here; never move or replace React-owned nodes.
+  const aiPresentations = new Map();
+  const expandedAiPosts = new Set(); // Post IDs only, for this tab's lifetime.
+  let aiStyle = null;
+  function normalizeAiMode(value) {
+    return ["collapse", "tint", "label"].includes(value) ? value : "collapse";
+  }
+  function isDetailPage() { return /\/status\/\d+(?:\/|$)/.test(location.pathname); }
+  function ensureAiStyle() {
+    if (aiStyle?.isConnected) return;
+    aiStyle = document.createElement("style");
+    aiStyle.setAttribute("data-xtags-ai-style", "");
+    aiStyle.textContent = `
+      [data-xtags-ai-hidden] { display:none !important; }
+      article[data-xtags-ai-tint][data-xtags-ai-theme="light"] { background-color:#fff3f3 !important; }
+      article[data-xtags-ai-tint][data-xtags-ai-theme="dark"] { background-color:#291b20 !important; }
+      [data-xtags-ai-control] { display:inline-flex; align-items:center; gap:6px;
+        margin-left:4px; vertical-align:baseline; white-space:nowrap;
+        font:500 11px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#991b1b; }
+      [data-xtags-ai-theme="dark"] [data-xtags-ai-control] { color:#fecaca; }
+      [data-xtags-ai-control] button { font:inherit; color:inherit; background:transparent;
+        border:0; padding:0; cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+      [data-xtags-ai-control] button:focus-visible { outline:2px solid currentColor; outline-offset:3px; }
+    `;
+    document.head.appendChild(aiStyle);
+  }
+  function clearAiPresentation(el) {
+    const state = aiPresentations.get(el);
+    if (state) {
+      for (const node of state.hidden) node.removeAttribute("data-xtags-ai-hidden");
+      state.row?.remove();
+      aiPresentations.delete(el);
+    }
+    el.removeAttribute("data-xtags-ai-tint");
+    el.removeAttribute("data-xtags-ai-theme");
+    el.removeAttribute("data-xtags-ai-collapsed");
+  }
+  function bodyBranches(el, anchor, textEl) {
+    // Find the content column shared by the header and body. The header and avatar
+    // remain untouched; later sibling branches include text, media, quotes and actions.
+    let root = anchor.parentElement;
+    while (root && root !== el && !root.contains(textEl)) root = root.parentElement;
+    if (!root?.contains(textEl)) return null;
+    let header = anchor;
+    while (header.parentElement !== root) header = header.parentElement;
+    const nodes = [];
+    for (let branch = header; branch && branch !== el; branch = branch.parentElement) {
+      for (let next = branch.nextElementSibling; next; next = next.nextElementSibling) {
+        if (!next.matches("[data-xtags-ai-control], [data-xtags-badge]")) nodes.push(next);
+      }
+    }
+    return nodes.some((node) => node.contains(textEl)) ? { root, header, nodes } : null;
+  }
+  function presentAi({ el, post }, entry) {
+    if (!entry.aiFlagged || AI_MODE === "label") { clearAiPresentation(el); return; }
+    const anchor = findTimeAnchor(el);
+    const textEl = [...el.querySelectorAll('[data-testid="tweetText"]')].find((node) => belongsToPost(node, el));
+    if (!anchor || !textEl) { clearAiPresentation(el); return; }
+    let state = aiPresentations.get(el);
+    if (state && (state.id !== post.id || state.text !== post.text)) {
+      clearAiPresentation(el); state = null;
+    }
+    if (!state) {
+      state = { id: post.id, text: post.text, textEl, markup: textEl.innerHTML, preview: textEl.innerText.trim(),
+        href: anchor.getAttribute("href"), hidden: new Set(), row: null };
+      aiPresentations.set(el, state);
+    }
+    ensureAiStyle();
+    el.setAttribute("data-xtags-ai-tint", "");
+    el.setAttribute("data-xtags-ai-theme", pageIsDark ? "dark" : "light");
+    const layout = AI_MODE === "collapse" && !isDetailPage() ? bodyBranches(el, anchor, textEl) : null;
+    // Leave a post open if the user is already interacting with its body.
+    if (layout?.nodes.some((node) => node.contains(document.activeElement))) expandedAiPosts.add(post.id);
+    const collapsed = !!layout && !expandedAiPosts.has(post.id);
+    const hidden = new Set(collapsed ? layout.nodes : []);
+    for (const node of state.hidden) if (!hidden.has(node)) node.removeAttribute("data-xtags-ai-hidden");
+    for (const node of hidden) if (!state.hidden.has(node)) {
+      for (const media of [node, ...node.querySelectorAll("video, audio")]) {
+        if (media.matches("video, audio")) media.pause();
+      }
+      node.setAttribute("data-xtags-ai-hidden", "");
+    }
+    state.hidden = hidden;
+    if (collapsed) el.setAttribute("data-xtags-ai-collapsed", "");
+    else el.removeAttribute("data-xtags-ai-collapsed");
+    if (!layout) { state.row?.remove(); state.row = null; return; }
+    if (!state.row) {
+      state.row = document.createElement("span");
+      state.row.setAttribute("data-xtags-ai-control", post.id);
+      state.label = document.createElement("span");
+      state.button = document.createElement("button");
+      state.button.type = "button";
+      state.button.addEventListener("keydown", (event) => {
+        if (["Enter", " "].includes(event.key)) event.stopPropagation();
+      });
+      state.button.addEventListener("click", (event) => {
+        event.preventDefault(); event.stopPropagation();
+        // The current article may have been recycled since the row was drawn.
+        const current = extract(el);
+        if (!CONSENTED || !ENABLED || !HAS_KEY || !current || current.id !== state.id || current.text !== state.text) {
+          clearAiPresentation(el); scheduleScan(); return;
+        }
+        if (expandedAiPosts.has(post.id)) expandedAiPosts.delete(post.id);
+        else expandedAiPosts.add(post.id);
+        paint(post.id);
+      });
+      state.row.append(state.label, state.button);
+    }
+    // Keep the control beside (not inside) the interactive label group.
+    const preceding = badgeIn(el) || anchor;
+    if (state.row.parentElement !== preceding.parentElement || state.row.previousElementSibling !== preceding) {
+      preceding.after(state.row);
+    }
+    state.row.lang = i18n.locale === "zh" ? "zh-CN" : "en";
+    state.row.title = i18n.t("aiNotice");
+    const label = `${i18n.t("synthetic")} · ${entry.aiP.toFixed(2)}`;
+    const action = i18n.t(collapsed ? "aiExpand" : "aiCollapse");
+    if (state.label.textContent !== label) state.label.textContent = label;
+    if (state.button.textContent !== action) state.button.textContent = action;
+    state.button.setAttribute("aria-expanded", String(!collapsed));
+    state.button.setAttribute("aria-label", `${label} — ${action}`);
+  }
+
+  // X navigation is same-document. The Navigation API also covers pushState;
+  // popstate remains a fallback and cached judgments make this repaint local.
+  function onRouteChange() { if (booted) scan({ repaint: true, request: false }); }
+  window.addEventListener("popstate", onRouteChange);
+  window.navigation?.addEventListener("currententrychange", onRouteChange);
+
+  function chip(text, level) {
+    const s = LEVELS[level] ?? LEVELS.calm;
+    const pill = document.createElement("span");
+    pill.textContent = text;
+    pill.dataset.xtagsLevel = level;
+    // 没有竖线、没有边框——只有底色和字色，靠色相和字重区分。
+    pill.style.cssText =
+      `display:inline-flex;align-items:center;padding:1px 7px;border-radius:3px;` +
+      `white-space:nowrap;background:${pageIsDark ? s.darkBg : s.bg};color:${pageIsDark ? s.darkFg : s.fg};` +
+      `font-weight:${s.weight};letter-spacing:.01em;`;
+    return pill;
+  }
+
+  /**
+   * 主帖的时间戳链接：header 行里第一个指向 /status/ 且内含 <time> 的 <a>。
+   * 取"第一个"是有意的——引用转推里也会有 <time>，但它排在主帖之后。
+   */
+  function badgeIn(el) {
+    return [...el.querySelectorAll(`[${BADGE_ATTR}]`)].find((node) => belongsToPost(node, el));
+  }
+  function findTimeAnchor(el) {
+    for (const a of el.querySelectorAll('a[href*="/status/"]')) {
+      if (a.querySelector("time") && belongsToPost(a, el)) return a;
+    }
+    return null;
+  }
+
+  function makeBadge(id, entry, aiInControl = false) {
+    // 放在 header 行里，必须是 inline 的——用 div 会另起一行。
+    const wrap = document.createElement("span");
+    wrap.setAttribute(BADGE_ATTR, id);
+    wrap.title = entry.tip;
+    wrap.tabIndex = 0;
+    wrap.setAttribute("role", "button");
+    wrap.setAttribute("aria-label", i18n.t("labelDetails", { intent: entry.intent, probability: entry.intentP.toFixed(2) }));
+    wrap.addEventListener("focus", () => { wrap.style.outline = "2px solid #5985ba"; showTip(wrap, entry.tip); });
+    wrap.addEventListener("blur", () => { wrap.style.outline = ""; hideTip(); });
+    wrap.addEventListener("mouseenter", () => showTip(wrap, entry.tip));
+    wrap.addEventListener("mouseleave", () => { if (document.activeElement !== wrap) hideTip(); });
+    wrap.addEventListener("click", (event) => { event.stopPropagation(); event.preventDefault(); showTip(wrap, entry.tip); });
+    wrap.addEventListener("keydown", (event) => {
+      if (["Enter", " ", "Escape"].includes(event.key)) {
+        event.preventDefault(); event.stopPropagation();
+        if (event.key === "Escape") hideTip(); else showTip(wrap, entry.tip);
+      }
+    });
+    wrap.lang = i18n.locale === "zh" ? "zh-CN" : "en";
+    wrap.style.cssText =
+      "display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;margin-left:8px;max-width:calc(100% - 8px);" +
+      "vertical-align:baseline;font:500 11px/1.3 " +
+      "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;";
+
+    wrap.appendChild(chip(`${entry.intent} ${entry.intentP.toFixed(2)}`, entry.intentLevel));
+    if (!aiInControl && (entry.aiFlagged || SHOW_ALL)) wrap.appendChild(chip(`${i18n.t("synthetic")} ${entry.aiP.toFixed(2)}`, entry.aiFlagged ? "violet" : "calm"));
+    for (const s of entry.signals) {
+      wrap.appendChild(chip(`${i18n.t(s.key)} ${s.p.toFixed(2)}`, s.level));
+    }
+    if (SHOW_ALL) {
+      for (const { key, p } of entry.allSignals) {
+        if (entry.signals.some((signal) => signal.key === key)) continue;
+        wrap.appendChild(chip(`${i18n.t(key)} ${p.toFixed(2)}`, "calm"));
+      }
+    }
+    return wrap;
+  }
+
+  function showIncomplete(el, id) {
+    clearAiPresentation(el);
+    scheduleFullTextRetry(id);
+    const existing = badgeIn(el);
+    if (existing?.getAttribute("data-xtags-incomplete") === "true") return;
+    existing?.remove();
+    const anchor = findTimeAnchor(el);
+    if (!anchor?.parentElement) return;
+    const badge = document.createElement("span");
+    badge.setAttribute(BADGE_ATTR, id);
+    badge.setAttribute("data-xtags-incomplete", "true");
+    badge.style.cssText = "display:inline-flex;margin-left:8px;font:500 11px/1.3 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;";
+    badge.appendChild(chip(i18n.t("fullTextUnavailable"), "calm"));
+    anchor.parentElement.insertBefore(badge, anchor.nextSibling);
+  }
+
+  function clearFullTextRetry(id) {
+    const retry = fullTextRetries.get(id);
+    if (retry?.timer !== null && retry?.timer !== undefined) clearTimeout(retry.timer);
+    fullTextRetries.delete(id);
+  }
+
+  function scheduleFullTextRetry(id) {
+    let retry = fullTextRetries.get(id);
+    if (!retry) {
+      retry = { attempts: 0, timer: null };
+      fullTextRetries.set(id, retry);
+    }
+    if (retry.timer !== null || retry.attempts >= FULL_TEXT_RETRY_DELAYS.length) return;
+    const delay = FULL_TEXT_RETRY_DELAYS[retry.attempts++];
+    retry.timer = setTimeout(() => {
+      retry.timer = null;
+      const stillPresent = [...document.querySelectorAll(POST_SELECTOR)].some((article) =>
+        findTimeAnchor(article)?.getAttribute("href")?.match(/status\/(\d+)/)?.[1] === id);
+      if (!stillPresent) {
+        fullTextRetries.delete(id);
+        return;
+      }
+      scan();
+    }, delay);
+    while (fullTextRetries.size > CACHE_LIMIT) clearFullTextRetry(fullTextRetries.keys().next().value);
+  }
+
+  function paintRecord(record, entry) {
+    const { el, post, reply } = record;
+    if (post.incomplete || cacheText.get(post.id) !== post.text || (SKIP_REPLIES && reply)) return;
+    const existing = badgeIn(el);
+    existing?.remove();
+    const anchor = findTimeAnchor(el);
+    presentAi(record, entry);
+    if (anchor?.parentElement) anchor.parentElement.insertBefore(makeBadge(post.id, entry, !!aiPresentations.get(el)?.row), anchor.nextSibling);
+  }
+  function paint(id) {
+    const answers = cache.get(id);
+    if (!CONSENTED || !ENABLED || !HAS_KEY || !answers) return;
+    const entry = compose(answers);
+    for (const record of pagePosts.get(id) || []) {
+      if (!record.el.isConnected) continue;
+      const post = extract(record.el);
+      if (post?.id === id) paintRecord({ el: record.el, post, reply: isReply(record.el) }, entry);
+    }
+  }
+  function clearBadges() {
+    hideTip();
+    for (const el of aiPresentations.keys()) clearAiPresentation(el);
+    for (const el of document.querySelectorAll(`[${BADGE_ATTR}]`)) el.remove();
+  }
+
+  // Each pass extracts the current DOM once, regardless of historical cache size.
+  function scan({ repaint = false, request = true } = {}) {
+    if (!CONSENTED || !ENABLED || !HAS_KEY) return;
+    for (const el of aiPresentations.keys()) if (!el.isConnected) clearAiPresentation(el);
+    const containers = document.querySelectorAll(POST_SELECTOR);
+    lastContainerCount = containers.length;
+    const records = [];
+    pagePosts = new Map();
+    for (const el of containers) {
+      const post = extract(el), reply = isReply(el);
+      const existing = badgeIn(el);
+      if (existing && (!post || (SKIP_REPLIES && reply) || existing.getAttribute(BADGE_ATTR) !== post.id)) existing.remove();
+      if (!post || (SKIP_REPLIES && reply)) clearAiPresentation(el);
+      if (!post) continue;
+      const record = { el, post, reply };
+      records.push(record);
+      if (!pagePosts.has(post.id)) pagePosts.set(post.id, []);
+      pagePosts.get(post.id).push(record);
+    }
+    // Prune before admitting replacements so recycled bodies can be queued immediately.
+    for (const job of inflight.values()) {
+      if (job.running && !(pagePosts.get(job.id) || []).some((record) => matchesJob(job, record))) {
+        cancelJob(job);
+        inflight.delete(job.id);
+      }
+    }
+    queue = queue.filter((job) => {
+      if ((pagePosts.get(job.id) || []).some((record) => matchesJob(job, record))) return true;
+      if (inflight.get(job.id) === job) inflight.delete(job.id);
+      const failure = failed.get(job.id);
+      if (failure) failure.ready = true;
+      return false;
+    });
+    queueOverflow = false;
+    for (const record of records) {
+      const { el, post, reply } = record;
+      if (SKIP_REPLIES && reply) {
+        skipped.add(post.id);
+        while (skipped.size > CACHE_LIMIT) skipped.delete(skipped.values().next().value);
+        continue;
+      }
+      if (post.incomplete) { showIncomplete(el, post.id); continue; }
+      clearFullTextRetry(post.id);
+      const existing = badgeIn(el);
+      if (existing?.getAttribute("data-xtags-incomplete") === "true") existing.remove();
+      if (cache.has(post.id) && cacheText.get(post.id) !== post.text) {
+        cache.delete(post.id); cacheText.delete(post.id);
+        badgeIn(el)?.remove();
+        clearAiPresentation(el);
+      }
+      if (cache.has(post.id)) {
+        if (repaint || !badgeIn(el)) paintRecord(record, compose(cache.get(post.id)));
+        else presentAi(record, compose(cache.get(post.id)));
+        continue;
+      }
+      if (!request) continue;
+      if (failed.has(post.id) && failed.get(post.id).text !== post.text) clearFailure(post.id);
+      const failure = failed.get(post.id);
+      if (inflight.has(post.id) || (failure && !failure.ready)) continue;
+      if (queue.length >= MAX_QUEUE) { queueOverflow = true; continue; }
+      const job = { id: post.id, generation, isReply: reply, retryAttempt: failure ? failure.attempts + 1 : 0,
+        state: { post: { author: post.author ? `@${post.author}` : null, text: post.text } } };
+      if (failure) failure.ready = false;
+      inflight.set(post.id, job); stats.seen++; queue.push(job);
+    }
+    // Prioritize posts near the viewport while keeping a small prefetch queue.
+    const distances = new Map(queue.map((job) => {
+      const rect = pagePosts.get(job.id)?.[0]?.el.getBoundingClientRect();
+      return [job, rect ? Math.max(0, -rect.bottom, rect.top - window.innerHeight) : Infinity];
+    }));
+    queue.sort((a, b) => distances.get(a) - distances.get(b));
+    for (const id of fullTextRetries.keys()) if (!pagePosts.has(id)) clearFullTextRetry(id);
+    stats.skipped = skipped.size;
+    refreshUi();
+    if (request) pump();
+  }
+
+  let scanTimer = null;
+  function scheduleScan() {
+    if (scanTimer !== null) return;
+    scanTimer = setTimeout(() => { scanTimer = null; scan(); }, 250);
+  }
+
+  // ── 面板 + 统计上报 ───────────────────────────────────────────────────────
+  let hud = null;
+
+  /**
+   * 跟随浏览器的明亮 / 黑暗模式。
+   *
+   * 为什么用 matchMedia 而不是 @media 媒体查询——HUD 的样式是内联设的
+   * （style.cssText），而**内联样式的优先级高于任何选择器**，媒体查询里的规则
+   * 根本覆盖不到它。只能在 JS 里改。
+   *
+   * 顺带白拿一个好处：change 事件会实时跟着系统主题切换，不用刷新页面。
+   */
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+  function applyHudTheme() {
+    if (!hud) return;
+    const dark = pageIsDark;
+    hud.style.background = dark ? "rgba(17,24,28,.92)" : "rgba(232,237,239,.96)";
+    hud.style.color = dark ? "#e6eff0" : "#2b3438";
+    // 浅底面板压在白色页面上需要一点边界感；深底不需要。
+    hud.style.boxShadow = dark ? "none" : "0 1px 3px rgba(0,0,0,.10)";
+  }
+
+  let pageIsDark = darkQuery.matches;
+  let tip = null, tipOwner = null;
+  function hideTip() {
+    tipOwner?.removeAttribute("aria-describedby");
+    tip?.remove(); tip = null; tipOwner = null;
+  }
+  function showTip(owner, text) {
+    hideTip();
+    tipOwner = owner;
+    tip = document.createElement("div");
+    tip.id = "xtags-label-details";
+    tip.setAttribute("data-xtags-tip", "");
+    tip.setAttribute("role", "tooltip");
+    tip.textContent = text;
+    tip.style.cssText = "position:fixed;z-index:2147483001;padding:10px;border-radius:6px;white-space:pre-wrap;" +
+      "font:13px/1.5 system-ui;max-width:min(320px,calc(100vw - 16px));box-sizing:border-box;" +
+      "pointer-events:none;box-shadow:0 2px 8px #0004;" +
+      `background:${pageIsDark ? "#202b33" : "#fff"};color:${pageIsDark ? "#f1f5f9" : "#17212a"};`;
+    positionTip();
+    owner.setAttribute("aria-describedby", tip.id);
+    document.body.appendChild(tip);
+  }
+  function positionTip() {
+    const rect = tipOwner.getBoundingClientRect();
+    tip.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 328))}px`;
+    tip.style.top = `${Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 160))}px`;
+  }
+  document.addEventListener("click", (event) => { if (!event.target.closest?.(`[${BADGE_ATTR}]`)) hideTip(); });
+  window.addEventListener("scroll", () => {
+    // Keyboard focus can itself scroll the page; keep its description available.
+    if (tipOwner?.isConnected && document.activeElement === tipOwner) positionTip();
+    else hideTip();
+  }, { passive: true });
+  function refreshTheme() {
+    let dark = darkQuery.matches;
+    for (const el of [document.body, document.documentElement]) {
+      const match = getComputedStyle(el).backgroundColor.match(/rgba?\(([^)]+)\)/);
+      if (!match) continue;
+      const values = match[1].split(",").map(Number);
+      if (values.length === 4 && values[3] < .9) continue;
+      dark = .2126 * values[0] + .7152 * values[1] + .0722 * values[2] < 128;
+      break;
+    }
+    if (dark !== pageIsDark) {
+      pageIsDark = dark;
+      for (const el of document.querySelectorAll("[data-xtags-level]")) {
+        const color = LEVELS[el.dataset.xtagsLevel] || LEVELS.calm;
+        el.style.background = dark ? color.darkBg : color.bg;
+        el.style.color = dark ? color.darkFg : color.fg;
+      }
+      hideTip();
+    }
+    for (const el of aiPresentations.keys()) el.setAttribute("data-xtags-ai-theme", dark ? "dark" : "light");
+    applyHudTheme();
+  }
+  darkQuery.addEventListener("change", refreshTheme);
+
+  function ensureHud() {
+    if (hud && hud.isConnected) return hud;
+    hud = document.createElement("div");
+    hud.setAttribute("data-xtags-hud", "");
+    hud.style.cssText =
+      "position:fixed;right:16px;top:16px;z-index:2147483000;padding:8px 12px;" +
+      "border-radius:6px;" +
+      "font:500 11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;" +
+      "pointer-events:none;letter-spacing:.02em;" +
+      // pre-wrap 而不是 pre：保留换行的同时允许折行。用 pre 的话，一条 160 字符的
+      // 报错会撑出一个上千像素宽的盒子，把面板挤出视口外。
+      "white-space:pre-wrap;overflow-wrap:anywhere;max-width:300px;";
+    applyHudTheme(); // 颜色不写在上面的 cssText 里，交给这里——避免两处定义打架
+    document.body.appendChild(hud);
+    return hud;
+  }
+
+  function hudText() {
+    if (!CONSENTED) return `Xtags\n${i18n.t("errorConsentRequired")}`;
+    if (!ENABLED) return `Xtags  ${i18n.t("paused")}`;
+    if (!HAS_KEY) return `Xtags\n${i18n.t("errorNoKey")}`;
+    const cost = (stats.tokens / 1e6) * 0.042;
+    const percent = stats.asked ? ((stats.labeled / stats.asked) * 100).toFixed(0) : 0;
+    const lines = [
+      "Xtags",
+      `${i18n.t("containers")}   ${lastContainerCount}`,
+      `${i18n.t("skipped")}   ${stats.skipped}  ← ${i18n.t("replies")}`,
+      `${i18n.t("seen")}   ${stats.seen}`,
+      `${i18n.t("assessed")}   ${stats.asked}`,
+      `${i18n.t("flagged")}   ${stats.labeled}  (${percent}%)`,
+      `${i18n.t("failed")}   ${stats.failed}`,
+      `${i18n.t("tokens")}  ${stats.tokens.toLocaleString(i18n.locale)}` + (serviceConfig.apiEndpoint === XtagsService.OFFICIAL_URL ? `  ≈$${cost.toFixed(5)}` : ""),
+    ];
+    if (stats.lastError) lines.push(`\n${i18n.t("lastError")}:\n${i18n.error(stats.lastError).slice(0, 200)}`);
+    return lines.join("\n");
+  }
+
+  function refreshUi() {
+    if (!SHOW_HUD || !document.body) {
+      if (hud) {
+        hud.remove();
+        hud = null;
+      }
+    } else {
+      if (!hud || !hud.isConnected) ensureHud();
+      hud.lang = i18n.locale === "zh" ? "zh-CN" : "en";
+      const text = hudText();
+      if (hud.textContent !== text) hud.textContent = text;
+    }
+  }
+
+  // ── 配置变化（popup 里改的）───────────────────────────────────────────────
+  function threshold(value, fallback = 0.8) {
+    const n = Number(value);
+    return value !== null && value !== "" && Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+  }
+
+  function applyChanges(changes) {
+    const lifecycle = ["hasKey", "keyRevision", "enabled", "consentVersion", "apiEndpoint", "consentEndpoint", "model", "resetToken"].some((k) => changes[k]);
+    if (lifecycle) invalidateRequests();
+    if (changes.hasKey) HAS_KEY = changes.hasKey.newValue === true;
+    if (changes.enabled) ENABLED = changes.enabled.newValue === true;
+    for (const key of Object.keys(serviceConfig)) if (changes[key]) serviceConfig[key] = changes[key].newValue ?? DEFAULTS[key];
+    CONSENTED = XtagsService.hasConsent(serviceConfig, CONSENT_VERSION);
+    if (changes.model) MODEL = changes.model.newValue || "jev-latest";
+    if (changes.resetToken) RESET_TOKEN = changes.resetToken.newValue ?? 0;
+    if (changes.language) i18n.setPreference(changes.language.newValue);
+    if (changes.showAll) SHOW_ALL = !!changes.showAll.newValue;
+    if (changes.skipReplies) {
+      SKIP_REPLIES = changes.skipReplies.newValue !== false;
+      skipped.clear();
+      stats.skipped = 0;
+    }
+    if (changes.showHud) SHOW_HUD = changes.showHud.newValue !== false;
+    if (changes.threshold) THRESHOLD = threshold(changes.threshold.newValue);
+    if (changes.aiThreshold) AI_THRESHOLD = threshold(changes.aiThreshold.newValue, 0.85);
+    if (changes.aiMode) AI_MODE = normalizeAiMode(changes.aiMode.newValue);
+    if (changes.model || changes.resetToken || changes.apiEndpoint) {
+      cache.clear();
+      cacheText.clear();
+    }
+    if (changes.resetToken) {
+      skipped.clear();
+      for (const key of Object.keys(stats)) stats[key] = key === "lastError" ? "" : 0;
+    } else if (lifecycle) {
+      stats.failed = 0;
+      stats.lastError = "";
+    }
+    clearBadges();
+    refreshUi();
+    if (Object.keys(changes).every((key) => key === "language")) {
+      scan({ repaint: true, request: false });
+    } else {
+      if (changes.retryToken) retryFailures(true);
+      else scan({ repaint: true });
+    }
+  }
+
+  chrome.storage.session.onChanged.addListener((changes) => {
+    if (!changes.publicConfig) return;
+    const before = changes.publicConfig.oldValue ?? {};
+    const after = changes.publicConfig.newValue ?? {};
+    const settings = Object.fromEntries(Object.keys(DEFAULTS)
+      .filter((key) => before[key] !== after[key])
+      .map((key) => [key, { oldValue: before[key], newValue: after[key] ?? DEFAULTS[key] }]));
+    if (!Object.keys(settings).length) return;
+    if (!booted) Object.assign(earlyChanges, settings);
+    else applyChanges(settings);
+  });
+
+  window.addEventListener("languagechange", () => {
+    if (booted && i18n.preference === "auto") {
+      clearBadges();
+      scan({ repaint: true, request: false });
+      refreshUi();
+    }
+  });
+
+  // 忽略自己的 HUD/标签变动，避免扫描 → 写 DOM → 扫描的反馈循环。
+  function ownNode(node) {
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    return !!el?.closest(`[${BADGE_ATTR}], [data-xtags-hud], [data-xtags-tip], [data-xtags-ai-control], [data-xtags-ai-style]`);
+  }
+
+  function onMutations(records) {
+    if (records.some((record) => {
+      if (ownNode(record.target)) return false;
+      const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+      if (record.type !== "childList") return !!target?.closest(POST_SELECTOR);
+      const external = [...record.addedNodes, ...record.removedNodes].filter((node) => !ownNode(node));
+      if (!external.length) return false;
+      if (target?.closest(POST_SELECTOR)) return true;
+      return external.some((node) => node.nodeType === 1 && (node.matches(POST_SELECTOR) || node.querySelector(POST_SELECTOR)));
+    })) scheduleScan();
+  }
+
+  // ── 启动 ──────────────────────────────────────────────────────────────────
+  function loadPublicConfig() {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: "xtags-config" }, (res) => {
+        if (chrome.runtime.lastError) return reject(Object.assign(new Error("Background unavailable"), { code: "errorNoResponse", retryable: true }));
+        if (!res?.ok || !res.data) return reject(new Error(res?.error || "settings unavailable"));
+        resolve(res.data);
+      });
+    });
+  }
+
+  async function boot() {
+    const cfg = { ...DEFAULTS, ...await loadPublicConfig() };
+    for (const [key, change] of Object.entries(earlyChanges)) cfg[key] = change.newValue;
+    i18n.setPreference(cfg.language);
+    HAS_KEY = cfg.hasKey === true;
+    MODEL = cfg.model || "jev-latest";
+    RESET_TOKEN = cfg.resetToken ?? 0;
+    THRESHOLD = threshold(cfg.threshold);
+    AI_THRESHOLD = threshold(cfg.aiThreshold, 0.85);
+    AI_MODE = normalizeAiMode(cfg.aiMode);
+    SHOW_ALL = !!cfg.showAll;
+    ENABLED = cfg.enabled === true;
+    for (const key of Object.keys(serviceConfig)) serviceConfig[key] = cfg[key];
+    CONSENTED = XtagsService.hasConsent(serviceConfig, CONSENT_VERSION);
+    SKIP_REPLIES = cfg.skipReplies !== false;
+    SHOW_HUD = cfg.showHud !== false;
+    booted = true;
+
+    new MutationObserver(onMutations).observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["href", "data-testid"],
+    });
+    const themeObserver = new MutationObserver(refreshTheme);
+    for (const el of [document.body, document.documentElement]) themeObserver.observe(el, { attributes: true, attributeFilter: ["style", "class"] });
+    refreshTheme();
+    refreshUi();
+    scan();
+  }
+
+  boot().catch((e) => console.warn("[xtags] 初始化失败:", e.message));
+})();
+</script></html>

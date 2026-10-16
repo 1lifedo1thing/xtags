@@ -18,6 +18,8 @@
     keyRevision: "",
     model: "jev-latest",
     threshold: 0.8,
+    aiThreshold: 0.85,
+    aiMode: "collapse",
     showAll: false,
     enabled: false,
     consentVersion: 0,
@@ -35,6 +37,8 @@
   let MODEL = "jev-latest";
   let RESET_TOKEN = 0;
   let THRESHOLD = 0.8;
+  let AI_THRESHOLD = 0.85;
+  let AI_MODE = "collapse";
   let SHOW_ALL = false;
   let ENABLED = false;
   let CONSENTED = false;
@@ -81,7 +85,6 @@
   const SIGNALS = [
     { key: "rage_bait", level: "alarm" },
     { key: "undisclosed_ad", level: "caution" },
-    { key: "synthetic", level: "violet" },
   ];
 
   const INTENT_LEVEL = {
@@ -125,7 +128,7 @@
   /**
    * 意图（每条都有）+ 触发信号（过了阈值的）。
    *
-   * 意图本身不设阈值——它总有一个答案，只是需要读一眼。被阈值把关的是三个信号：
+   * 意图本身不设阈值——它总有一个答案，只是需要读一眼。两项风险信号使用共同阈值，AI 倾向使用独立阈值：
    * 它们决定这条帖子是否被标记为"有问题"。这样调阈值时意图标签稳定不动，只有
    * 警示部分在变，前后对比才看得清。
    */
@@ -138,6 +141,8 @@
       intentP: a.intent.probabilities[key],
       signals: signals.filter((signal) => signal.p >= THRESHOLD),
       allSignals: signals,
+      aiP: a.synthetic.noul,
+      aiFlagged: a.synthetic.noul >= AI_THRESHOLD,
       tip: tooltip(a),
     };
   }
@@ -146,6 +151,8 @@
     return [
       `${i18n.t("intent")}  ${i18n.t(a.intent.choice)} (${a.intent.choice})   ${i18n.t("confidence")} ${a.intent.confidence.toFixed(3)}`,
       ...SIGNALS.map(({ key }) => `${i18n.t(key)}  ${a[key].noul.toFixed(3)}`),
+      `${i18n.t("synthetic")}  ${a.synthetic.noul.toFixed(3)}`,
+      i18n.t("aiNotice"),
     ].join("\n");
   }
 
@@ -249,7 +256,7 @@
           const verdict = compose(r.answers);
           stats.asked++;
           stats.tokens += r.usage?.input_tokens ?? 0;
-          if (verdict.signals.length > 0) stats.labeled++;
+          if (verdict.signals.length > 0 || verdict.aiFlagged) stats.labeled++;
           cache.delete(job.id);
           cache.set(job.id, r.answers);
           cacheText.set(job.id, job.state.post.text);
@@ -321,7 +328,12 @@
     const textEl = [...el.querySelectorAll('[data-testid="tweetText"]')].find((node) => belongsToPost(node, el));
     if (!textEl) return null;
 
-    let text = textEl.innerText.trim();
+    // display:none changes innerText semantics. Reuse the exact visible preview only
+    // while its DOM is unchanged; restore before reading edits or recycled nodes.
+    const presentation = aiPresentations.get(el);
+    if (presentation && (presentation.textEl !== textEl || presentation.markup !== textEl.innerHTML ||
+        findTimeAnchor(el)?.getAttribute("href") !== presentation.href)) clearAiPresentation(el);
+    let text = aiPresentations.get(el)?.preview ?? textEl.innerText.trim();
     if (!text) return null;
 
     const statusLink = findTimeAnchor(el);
@@ -369,6 +381,135 @@
   // ── 贴标签 ────────────────────────────────────────────────────────────────
   const BADGE_ATTR = "data-xtags-badge";
 
+  // Only presentation metadata lives here; never move or replace React-owned nodes.
+  const aiPresentations = new Map();
+  const expandedAiPosts = new Set(); // Post IDs only, for this tab's lifetime.
+  let aiStyle = null;
+  function normalizeAiMode(value) {
+    return ["collapse", "tint", "label"].includes(value) ? value : "collapse";
+  }
+  function isDetailPage() { return /\/status\/\d+(?:\/|$)/.test(location.pathname); }
+  function ensureAiStyle() {
+    if (aiStyle?.isConnected) return;
+    aiStyle = document.createElement("style");
+    aiStyle.setAttribute("data-xtags-ai-style", "");
+    aiStyle.textContent = `
+      [data-xtags-ai-hidden] { display:none !important; }
+      article[data-xtags-ai-tint][data-xtags-ai-theme="light"] { background-color:#fff3f3 !important; }
+      article[data-xtags-ai-tint][data-xtags-ai-theme="dark"] { background-color:#291b20 !important; }
+      [data-xtags-ai-control] { display:inline-flex; align-items:center; gap:6px;
+        margin-left:4px; vertical-align:baseline; white-space:nowrap;
+        font:500 11px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#991b1b; }
+      [data-xtags-ai-theme="dark"] [data-xtags-ai-control] { color:#fecaca; }
+      [data-xtags-ai-control] button { font:inherit; color:inherit; background:transparent;
+        border:0; padding:0; cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+      [data-xtags-ai-control] button:focus-visible { outline:2px solid currentColor; outline-offset:3px; }
+    `;
+    document.head.appendChild(aiStyle);
+  }
+  function clearAiPresentation(el) {
+    const state = aiPresentations.get(el);
+    if (state) {
+      for (const node of state.hidden) node.removeAttribute("data-xtags-ai-hidden");
+      state.row?.remove();
+      aiPresentations.delete(el);
+    }
+    el.removeAttribute("data-xtags-ai-tint");
+    el.removeAttribute("data-xtags-ai-theme");
+    el.removeAttribute("data-xtags-ai-collapsed");
+  }
+  function bodyBranches(el, anchor, textEl) {
+    // Find the content column shared by the header and body. The header and avatar
+    // remain untouched; later sibling branches include text, media, quotes and actions.
+    let root = anchor.parentElement;
+    while (root && root !== el && !root.contains(textEl)) root = root.parentElement;
+    if (!root?.contains(textEl)) return null;
+    let header = anchor;
+    while (header.parentElement !== root) header = header.parentElement;
+    const nodes = [];
+    for (let branch = header; branch && branch !== el; branch = branch.parentElement) {
+      for (let next = branch.nextElementSibling; next; next = next.nextElementSibling) {
+        if (!next.matches("[data-xtags-ai-control], [data-xtags-badge]")) nodes.push(next);
+      }
+    }
+    return nodes.some((node) => node.contains(textEl)) ? { root, header, nodes } : null;
+  }
+  function presentAi({ el, post }, entry) {
+    if (!entry.aiFlagged || AI_MODE === "label") { clearAiPresentation(el); return; }
+    const anchor = findTimeAnchor(el);
+    const textEl = [...el.querySelectorAll('[data-testid="tweetText"]')].find((node) => belongsToPost(node, el));
+    if (!anchor || !textEl) { clearAiPresentation(el); return; }
+    let state = aiPresentations.get(el);
+    if (state && (state.id !== post.id || state.text !== post.text)) {
+      clearAiPresentation(el); state = null;
+    }
+    if (!state) {
+      state = { id: post.id, text: post.text, textEl, markup: textEl.innerHTML, preview: textEl.innerText.trim(),
+        href: anchor.getAttribute("href"), hidden: new Set(), row: null };
+      aiPresentations.set(el, state);
+    }
+    ensureAiStyle();
+    el.setAttribute("data-xtags-ai-tint", "");
+    el.setAttribute("data-xtags-ai-theme", pageIsDark ? "dark" : "light");
+    const layout = AI_MODE === "collapse" && !isDetailPage() ? bodyBranches(el, anchor, textEl) : null;
+    // Leave a post open if the user is already interacting with its body.
+    if (layout?.nodes.some((node) => node.contains(document.activeElement))) expandedAiPosts.add(post.id);
+    const collapsed = !!layout && !expandedAiPosts.has(post.id);
+    const hidden = new Set(collapsed ? layout.nodes : []);
+    for (const node of state.hidden) if (!hidden.has(node)) node.removeAttribute("data-xtags-ai-hidden");
+    for (const node of hidden) if (!state.hidden.has(node)) {
+      for (const media of [node, ...node.querySelectorAll("video, audio")]) {
+        if (media.matches("video, audio")) media.pause();
+      }
+      node.setAttribute("data-xtags-ai-hidden", "");
+    }
+    state.hidden = hidden;
+    if (collapsed) el.setAttribute("data-xtags-ai-collapsed", "");
+    else el.removeAttribute("data-xtags-ai-collapsed");
+    if (!layout) { state.row?.remove(); state.row = null; return; }
+    if (!state.row) {
+      state.row = document.createElement("span");
+      state.row.setAttribute("data-xtags-ai-control", post.id);
+      state.label = document.createElement("span");
+      state.button = document.createElement("button");
+      state.button.type = "button";
+      state.button.addEventListener("keydown", (event) => {
+        if (["Enter", " "].includes(event.key)) event.stopPropagation();
+      });
+      state.button.addEventListener("click", (event) => {
+        event.preventDefault(); event.stopPropagation();
+        // The current article may have been recycled since the row was drawn.
+        const current = extract(el);
+        if (!CONSENTED || !ENABLED || !HAS_KEY || !current || current.id !== state.id || current.text !== state.text) {
+          clearAiPresentation(el); scheduleScan(); return;
+        }
+        if (expandedAiPosts.has(post.id)) expandedAiPosts.delete(post.id);
+        else expandedAiPosts.add(post.id);
+        paint(post.id);
+      });
+      state.row.append(state.label, state.button);
+    }
+    // Keep the control beside (not inside) the interactive label group.
+    const preceding = badgeIn(el) || anchor;
+    if (state.row.parentElement !== preceding.parentElement || state.row.previousElementSibling !== preceding) {
+      preceding.after(state.row);
+    }
+    state.row.lang = i18n.locale === "zh" ? "zh-CN" : "en";
+    state.row.title = i18n.t("aiNotice");
+    const label = `${i18n.t("synthetic")} · ${entry.aiP.toFixed(2)}`;
+    const action = i18n.t(collapsed ? "aiExpand" : "aiCollapse");
+    if (state.label.textContent !== label) state.label.textContent = label;
+    if (state.button.textContent !== action) state.button.textContent = action;
+    state.button.setAttribute("aria-expanded", String(!collapsed));
+    state.button.setAttribute("aria-label", `${label} — ${action}`);
+  }
+
+  // X navigation is same-document. The Navigation API also covers pushState;
+  // popstate remains a fallback and cached judgments make this repaint local.
+  function onRouteChange() { if (booted) scan({ repaint: true, request: false }); }
+  window.addEventListener("popstate", onRouteChange);
+  window.navigation?.addEventListener("currententrychange", onRouteChange);
+
   function chip(text, level) {
     const s = LEVELS[level] ?? LEVELS.calm;
     const pill = document.createElement("span");
@@ -396,7 +537,7 @@
     return null;
   }
 
-  function makeBadge(id, entry) {
+  function makeBadge(id, entry, aiInControl = false) {
     // 放在 header 行里，必须是 inline 的——用 div 会另起一行。
     const wrap = document.createElement("span");
     wrap.setAttribute(BADGE_ATTR, id);
@@ -422,6 +563,7 @@
       "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;";
 
     wrap.appendChild(chip(`${entry.intent} ${entry.intentP.toFixed(2)}`, entry.intentLevel));
+    if (!aiInControl && (entry.aiFlagged || SHOW_ALL)) wrap.appendChild(chip(`${i18n.t("synthetic")} ${entry.aiP.toFixed(2)}`, entry.aiFlagged ? "violet" : "calm"));
     for (const s of entry.signals) {
       wrap.appendChild(chip(`${i18n.t(s.key)} ${s.p.toFixed(2)}`, s.level));
     }
@@ -435,6 +577,7 @@
   }
 
   function showIncomplete(el, id) {
+    clearAiPresentation(el);
     scheduleFullTextRetry(id);
     const existing = badgeIn(el);
     if (existing?.getAttribute("data-xtags-incomplete") === "true") return;
@@ -482,7 +625,8 @@
     const existing = badgeIn(el);
     existing?.remove();
     const anchor = findTimeAnchor(el);
-    if (anchor?.parentElement) anchor.parentElement.insertBefore(makeBadge(post.id, entry), anchor.nextSibling);
+    presentAi(record, entry);
+    if (anchor?.parentElement) anchor.parentElement.insertBefore(makeBadge(post.id, entry, !!aiPresentations.get(el)?.row), anchor.nextSibling);
   }
   function paint(id) {
     const answers = cache.get(id);
@@ -496,12 +640,14 @@
   }
   function clearBadges() {
     hideTip();
+    for (const el of aiPresentations.keys()) clearAiPresentation(el);
     for (const el of document.querySelectorAll(`[${BADGE_ATTR}]`)) el.remove();
   }
 
   // Each pass extracts the current DOM once, regardless of historical cache size.
   function scan({ repaint = false, request = true } = {}) {
     if (!CONSENTED || !ENABLED || !HAS_KEY) return;
+    for (const el of aiPresentations.keys()) if (!el.isConnected) clearAiPresentation(el);
     const containers = document.querySelectorAll(POST_SELECTOR);
     lastContainerCount = containers.length;
     const records = [];
@@ -510,6 +656,7 @@
       const post = extract(el), reply = isReply(el);
       const existing = badgeIn(el);
       if (existing && (!post || (SKIP_REPLIES && reply) || existing.getAttribute(BADGE_ATTR) !== post.id)) existing.remove();
+      if (!post || (SKIP_REPLIES && reply)) clearAiPresentation(el);
       if (!post) continue;
       const record = { el, post, reply };
       records.push(record);
@@ -545,9 +692,11 @@
       if (cache.has(post.id) && cacheText.get(post.id) !== post.text) {
         cache.delete(post.id); cacheText.delete(post.id);
         badgeIn(el)?.remove();
+        clearAiPresentation(el);
       }
       if (cache.has(post.id)) {
         if (repaint || !badgeIn(el)) paintRecord(record, compose(cache.get(post.id)));
+        else presentAi(record, compose(cache.get(post.id)));
         continue;
       }
       if (!request) continue;
@@ -653,6 +802,7 @@
       }
       hideTip();
     }
+    for (const el of aiPresentations.keys()) el.setAttribute("data-xtags-ai-theme", dark ? "dark" : "light");
     applyHudTheme();
   }
   darkQuery.addEventListener("change", refreshTheme);
@@ -709,9 +859,9 @@
   }
 
   // ── 配置变化（popup 里改的）───────────────────────────────────────────────
-  function threshold(value) {
+  function threshold(value, fallback = 0.8) {
     const n = Number(value);
-    return value !== null && value !== "" && Number.isFinite(n) && n >= 0 && n <= 1 ? n : 0.8;
+    return value !== null && value !== "" && Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
   }
 
   function applyChanges(changes) {
@@ -732,6 +882,8 @@
     }
     if (changes.showHud) SHOW_HUD = changes.showHud.newValue !== false;
     if (changes.threshold) THRESHOLD = threshold(changes.threshold.newValue);
+    if (changes.aiThreshold) AI_THRESHOLD = threshold(changes.aiThreshold.newValue, 0.85);
+    if (changes.aiMode) AI_MODE = normalizeAiMode(changes.aiMode.newValue);
     if (changes.model || changes.resetToken || changes.apiEndpoint) {
       cache.clear();
       cacheText.clear();
@@ -776,7 +928,7 @@
   // 忽略自己的 HUD/标签变动，避免扫描 → 写 DOM → 扫描的反馈循环。
   function ownNode(node) {
     const el = node.nodeType === 1 ? node : node.parentElement;
-    return !!el?.closest(`[${BADGE_ATTR}], [data-xtags-hud], [data-xtags-tip]`);
+    return !!el?.closest(`[${BADGE_ATTR}], [data-xtags-hud], [data-xtags-tip], [data-xtags-ai-control], [data-xtags-ai-style]`);
   }
 
   function onMutations(records) {
@@ -810,6 +962,8 @@
     MODEL = cfg.model || "jev-latest";
     RESET_TOKEN = cfg.resetToken ?? 0;
     THRESHOLD = threshold(cfg.threshold);
+    AI_THRESHOLD = threshold(cfg.aiThreshold, 0.85);
+    AI_MODE = normalizeAiMode(cfg.aiMode);
     SHOW_ALL = !!cfg.showAll;
     ENABLED = cfg.enabled === true;
     for (const key of Object.keys(serviceConfig)) serviceConfig[key] = cfg[key];

@@ -1,5 +1,8 @@
 {
+  "extensionName": {
+    "message": "Xtags — X 推文 AI 识别与过滤"
+  },
   "extensionDescription": {
-    "message": "在 X 时间线上，给每条帖子标出它想让你干什么。判断来自 Jev，一个只返回概率、不生成文本的模型。"
+    "message": "识别 X / Twitter 推文中的疑似 AI 生成内容，自动折叠或高亮提示，支持点击展开和自定义阈值。"
   }
 }

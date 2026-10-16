@@ -1,5 +1,8 @@
 {
+  "extensionName": {
+    "message": "Xtags — AI Content Filter for X"
+  },
   "extensionDescription": {
-    "message": "Label the intent behind posts on X with Jev, a model that returns probabilities rather than generated text."
+    "message": "Identify suspected AI-generated posts on X / Twitter. Auto-collapse, highlight or label them, with adjustable thresholds."
   }
 }

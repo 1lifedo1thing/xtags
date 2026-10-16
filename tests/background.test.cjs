@@ -216,9 +216,9 @@ test('cache write failure returns a usable result with a visible warning', async
 test('stale cache versions and reset generations are discarded on startup', async () => {
   const digest = await webcrypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ author: '@alice', text: 'Post 1' })));
   const fingerprint = Buffer.from(digest).toString('hex');
-  for (const overrides of [{ cacheVersion: 5 }, { cacheResetToken: 'old' }, { cacheModel: 'old-model' }]) {
+  for (const overrides of [{ cacheVersion: 6 }, { cacheResetToken: 'old' }, { cacheModel: 'old-model' }]) {
     const e = await setup({ data: { apiKey: 'test', enabled: true, consentVersion: 2, model: 'jev-latest', resetToken: 0,
-      cacheVersion: 6, cacheModel: 'jev-latest', cacheResetToken: 0,
+      cacheVersion: 7, cacheModel: 'jev-latest', cacheResetToken: 0,
       cache: { '1': { answers: answers(), fingerprint, at: Date.now() } }, ...overrides } });
     const result = e.ask('1'); await flush(); assert.equal(e.calls.length, 1); e.calls[0].respond(); await result;
   }
@@ -508,7 +508,7 @@ test('last consumer cancellation aborts and immediate cancellation wins the hash
 
 test('startup prunes cache count and byte budget and keeps newest valid records', async () => {
   const data = { apiKey:'test', enabled:true, consentVersion:2, model:'jev-latest', resetToken:0,
-    cacheVersion:6, cacheModel:'jev-latest', cacheResetToken:0 };
+    cacheVersion:7, cacheModel:'jev-latest', cacheResetToken:0 };
   for(let i=1;i<=3002;i++) data['cacheEntry:'+i] = { answers: answers(), fingerprint:'a'.repeat(64), at:i };
   data['cacheEntry:bad']={answers:answers(),fingerprint:'a'.repeat(64),at:999999};
   const e=await setup({data}); const entries=cacheEntries(e.data);
@@ -516,4 +516,18 @@ test('startup prunes cache count and byte budget and keeps newest valid records'
   assert.equal(entries['1'],undefined); assert.equal(entries['2'],undefined); assert.ok(entries['3002']);
   assert.equal(Object.hasOwn(e.data,'cacheEntry:bad'),false);
   assert.ok(Buffer.byteLength(JSON.stringify(entries))<=2*1024*1024);
+});
+
+
+test('AI display preferences are public and do not cancel or reissue classification', async () => {
+  const e = await setup();
+  const cfg = await e.configMessage();
+  assert.equal(cfg.data.aiMode, 'collapse'); assert.equal(cfg.data.aiThreshold, .85);
+  const pending = e.ask('1'); await flush();
+  await e.set({ aiMode: 'label', aiThreshold: .95 });
+  assert.equal(e.calls.length, 1); assert.equal(e.calls[0].init.signal.aborted, false);
+  e.calls[0].respond(); assert.equal((await pending).ok, true);
+  const next = await e.configMessage();
+  assert.equal(next.data.aiMode, 'label'); assert.equal(next.data.aiThreshold, .95);
+  assert.equal((await e.ask('1')).data.cached, true);
 });

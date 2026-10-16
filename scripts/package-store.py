@@ -25,6 +25,15 @@ for path in files:
     assert (EXT / path).is_file(), path
     if path.endswith('.json'):
         json.loads((EXT / path).read_text())
+for locale in ('en', 'zh_CN'):
+    catalog = json.loads((EXT / f'_locales/{locale}/messages.json').read_text())
+    for field, limit in (('name', 75), ('description', 132)):
+        value = manifest[field]
+        if value.startswith('__MSG_') and value.endswith('__'):
+            value = catalog[value[6:-2]]['message']
+        assert value and len(value) <= limit, (locale, field)
+for name in ('index.html', 'privacy.html', 'privacy.zh-CN.html', 'support.html', 'styles.css'):
+    assert (EXT / 'privacy' / name).read_bytes() == (ROOT / 'docs' / name).read_bytes(), name
 STORE.mkdir(exist_ok=True)
 target = STORE / f"xtags-{manifest['version']}-chrome-web-store.zip"
 sources = {path: EXT / path for path in files}
@@ -44,7 +53,8 @@ report = {
     'sha256': hashlib.sha256(target.read_bytes()).hexdigest(), 'bytes': target.stat().st_size,
     'checks': {'manifest_at_root': True, 'manifest_references_present': True,
                'locales_parse': True, 'license_included': True, 'zip_integrity': True,
-               'runtime_allowlist_only': True},
+               'runtime_allowlist_only': True, 'localized_metadata_valid': True,
+               'bundled_policy_matches_local_docs': True},
     'files': [{'path': name, 'bytes': source.stat().st_size,
                'sha256': hashlib.sha256(source.read_bytes()).hexdigest()}
               for name, source in sorted(sources.items())]

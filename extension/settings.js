@@ -7,6 +7,8 @@ const DEFAULTS = {
   apiKey: "",
   keyRevision: "",
   threshold: 0.8,
+  aiThreshold: 0.85,
+  aiMode: "collapse",
   model: "jev-latest",
   enabled: false,
   consentVersion: 0,
@@ -81,6 +83,8 @@ async function load() {
     renderEndpointFields();
     $("apiKey").value = cfg.apiKey || "";
     $("threshold").value = cfg.threshold ?? 0.8;
+    $("aiThreshold").value = cfg.aiThreshold ?? 0.85;
+    $("aiMode").value = ["collapse", "tint", "label"].includes(cfg.aiMode) ? cfg.aiMode : "collapse";
     $("enabled").checked = cfg.enabled === true;
     $("skipReplies").checked = cfg.skipReplies !== false;
     $("showAll").checked = !!cfg.showAll;
@@ -95,14 +99,14 @@ async function load() {
 function restoreFields(keys) {
   for (const key of keys) {
     if (CHECKBOXES.includes(key)) $(key).checked = !!state[key];
-    else if (key === "apiKey" || key === "threshold") $(key).value = state[key];
+    else if (["apiKey", "threshold", "aiThreshold", "aiMode"].includes(key)) $(key).value = state[key];
   }
 }
 async function save(settings) {
   if (!loaded || saving) return false;
   saving = true;
   renderConsent();
-  const preferences = Object.keys(settings).some((key) => ["apiKey", "threshold", ...CHECKBOXES].includes(key));
+  const preferences = Object.keys(settings).some((key) => ["apiKey", "threshold", "aiThreshold", "aiMode", ...CHECKBOXES].includes(key));
   try {
     await chrome.storage.local.set(settings);
     Object.assign(state, settings);
@@ -142,7 +146,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.consentVersion || changes.consentEndpoint || changes.apiEndpoint) $("consentCheck").checked = false;
   if (changes.apiEndpoint) renderEndpointFields();
   if (changes.language) i18n.setPreference(state.language);
-  for (const id of ["apiKey", "threshold", ...CHECKBOXES]) {
+  for (const id of ["apiKey", "threshold", "aiThreshold", "aiMode", ...CHECKBOXES]) {
     if (!changes[id]) continue;
     if (CHECKBOXES.includes(id)) $(id).checked = !!state[id];
     else $(id).value = state[id] ?? "";
@@ -224,6 +228,12 @@ $("threshold").addEventListener("change", () => {
   $("threshold").value = threshold;
   save({ threshold });
 });
+$("aiThreshold").addEventListener("change", () => {
+  const raw = $("aiThreshold").value;
+  const value = Number(raw);
+  save({ aiThreshold: raw !== "" && Number.isFinite(value) && value >= 0 && value <= 1 ? value : 0.85 });
+});
+$("aiMode").addEventListener("change", () => save({ aiMode: $("aiMode").value }));
 for (const id of CHECKBOXES) {
   $(id).addEventListener("change", () => {
     if (id === "enabled" && !XtagsService.hasConsent(state, CONSENT_VERSION)) { renderConsent(); return; }
